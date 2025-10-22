@@ -1,4 +1,5 @@
 #include "../include/WebServ.hpp"
+#include <stdexcept>
 
 bool ServerManager::_running = true; // Initialize the static running variable
 
@@ -61,8 +62,9 @@ void ServerManager::_init_server_unit(ServerUnit server) {
     // listen
     int fd = server.getFd();
     if (listen(fd, BACKLOG_SIZE) < 0) {
-        logInfo("listen(%d) failed: %s", fd, strerror(errno));
-        exit(ERROR);
+        logError("listen(%d) failed: %s", fd, strerror(errno));
+        close(fd);
+        throw std::runtime_error("listen failed");
     }
     // Add to the read set
     FD_SET(fd, &_read_fds);
@@ -701,10 +703,9 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
         logDebug("response:\n%s\n-----", response_str.c_str());
 
     } catch (const std::exception &e) {
-        // raise exc?
         logError("Exception: %s", e.what());
-        //int code = HttpStatusCode::InternalServerError; // Default to 500 Internal Server
-        exit(1);
+        response_str = prepare_error_response(client_socket, HttpStatusCode::InternalServerError);
+        logInfo("response_str error ok");
     }
     logInfo("Done\n----------");
     return response_str;
@@ -745,7 +746,10 @@ std::string ServerManager::prepare_error_response(int client_socket, int code) {
             break;
         case HttpStatusCode::InternalServerError:
             logError("Error. %s. Acción: Revisar los registros del servidor.", message.c_str());
-            exit(2);
+            {
+                HttpResponse response(code);
+                response_str = response.getResponse();
+            }
             break;
         case HttpStatusCode::BadRequest:
             response_str =

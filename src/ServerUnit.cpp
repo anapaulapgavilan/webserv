@@ -103,8 +103,6 @@ void ServerUnit::setRoot(std::string root) // Check
     if (ConfigFile::getTypePath(full_root) != F_DIRECTORY)
         throw ErrorException(SYNTAX_ERR_ROOT);
     this->_root = full_root;
-    logError("root is not a directory - averigua que pasa en este caso");
-    exit(2);
 }
 
 void ServerUnit::setPort(std::string token) // Check 
@@ -222,8 +220,10 @@ void ServerUnit::setLocation(std::string path, std::vector<std::string> tokens) 
             else
             {
                 logDebug("setting Root location to: %s", tokens[i].c_str());
-                exit(1) ; // TODO: quiero entender esto          
-                new_location.setRootLocation(this->_root + tokens[i]);
+                std::string expanded_root = this->_root + tokens[i];
+                if (ConfigFile::getTypePath(expanded_root) != F_DIRECTORY)
+                    throw ErrorException(LOCATION_ERR_VALIDATION);
+                new_location.setRootLocation(expanded_root);
             }
         }
         else if ((tokens[i] == ALLOW_METHODS || tokens[i] == METHODS) && (i + 1) < tokens.size())
@@ -371,7 +371,7 @@ int ServerUnit::isValidLocation(Location &location) const // Check
          * location /cgi-bin/ {...
          */
         logError("Validating cgi-bin location: not supported");
-        exit(1);
+        return (ER_VAL_LOCATION);
 
     }
     else
