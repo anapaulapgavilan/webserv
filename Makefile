@@ -1,5 +1,5 @@
 CXX       = c++
-CXXFLAGS  = -Wall -Wextra -std=c++98 -I$(INCLUDE)
+CXXFLAGS  = -Wall -Wextra -Werror -std=c++98 -I$(INCLUDE)
 
 NAME      = webserv
 
