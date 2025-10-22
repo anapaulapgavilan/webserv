@@ -47,8 +47,15 @@ TEST_BIN  = tests/test_configparser \
 # Default target
 all: $(NAME)
 
+CGI_SCRIPTS = cgi_tester \
+              cgi-bin/deleteFile.py \
+              cgi-bin/getFile.py \
+              cgi-bin/getIndex.py \
+              cgi-bin/saveFile.py
+
 # Link server binary
 $(NAME): $(OBJ)
+	@chmod +x $(CGI_SCRIPTS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJ)
 
 # Compile object files into the build folder

@@ -10,6 +10,7 @@ __FUNCTION__ — current function name (supported by most compilers, including G
 */
 
 void _log_buffer(const char* level, const char* color, const char* buffer) {
+
 #if !USE_COLOR
     (void)color;
 #endif

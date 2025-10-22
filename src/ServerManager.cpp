@@ -58,7 +58,6 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
         );
     }
 }
-
 void ServerManager::_init_server_unit(ServerUnit &server) {
     const int fd = server.getFd();
     if (listen(fd, BACKLOG_SIZE) < 0) {
@@ -599,6 +598,7 @@ void ServerManager::_handle_directory_case(
         // No hay index y autoindex está deshabilitado → 404
         throw HttpException(HttpStatusCode::NotFound);
     }
+
 }
 
 void ServerManager::_apply_redirection(const Location *loc) {
