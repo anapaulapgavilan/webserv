@@ -1,4 +1,5 @@
 #include "../include/WebServ.hpp"
+#include <limits.h>
 
 ServerUnit::ServerUnit() // Check
 {
@@ -88,29 +89,34 @@ void ServerUnit::setHost(std::string token) // Check
     this->_host = inet_addr(token.data());
 }
 
-void ServerUnit::setRoot(std::string root) // Check 
+void ServerUnit::setRoot(std::string root) // Check
 {
     checkSemicolon(root);
     if (ConfigFile::getTypePath(root) == F_DIRECTORY)
     {
         this->_root = root;
-        return ;
     }
-    // if it is not a directory:
-    char dir[1024];
-    getcwd(dir, 1024);
-    std::string full_root = dir + root;
-    if (ConfigFile::getTypePath(full_root) != F_DIRECTORY)
-        throw ErrorException(SYNTAX_ERR_ROOT);
-    this->_root = full_root;
-    logError("root is not a directory - averigua que pasa en este caso");
-    exit(2);
+    else
+    {
+        char dir[PATH_MAX];
+        if (!getcwd(dir, sizeof(dir)))
+            throw ErrorException(std::string(SYNTAX_ERR_ROOT) + ": unable to resolve current directory");
+        std::string full_root = std::string(dir);
+        if (!full_root.empty() && full_root[full_root.size() - 1] != '/')
+            full_root += "/";
+        full_root += root;
+        if (ConfigFile::getTypePath(full_root) != F_DIRECTORY)
+            throw ErrorException(SYNTAX_ERR_ROOT);
+        this->_root = full_root;
+    }
+    if (!_root.empty() && _root[_root.size() - 1] != '/')
+        _root += "/";
 }
 
-void ServerUnit::setPort(std::string token) // Check 
+void ServerUnit::setPort(std::string token) // Check
 {
     unsigned int port;
-    
+
     port = 0;
     checkSemicolon(token);
     for (size_t i = 0; i < token.length(); i++)
@@ -127,7 +133,7 @@ void ServerUnit::setPort(std::string token) // Check
 void ServerUnit::setClientMaxBodySize(std::string token) // Check
 {
     unsigned long body_size;
-    
+
     body_size = 0;
     checkSemicolon(token);
     for (size_t i = 0; i < token.length(); i++)
@@ -141,7 +147,7 @@ void ServerUnit::setClientMaxBodySize(std::string token) // Check
     this->_client_max_body_size = body_size;
 }
 
-void ServerUnit::setIndex(std::string index) //Check 
+void ServerUnit::setIndex(std::string index) //Check
 {
     checkSemicolon(index);
     // check it does not start with /
@@ -159,7 +165,7 @@ void ServerUnit::setAutoindex(std::string autoindex) //Check
         this->_autoindex = true;
 }
 
-void	ServerUnit::setFd(int fd) //Check
+void    ServerUnit::setFd(int fd) //Check
 {
     this->_listen_fd = fd;
 }
@@ -222,8 +228,10 @@ void ServerUnit::setLocation(std::string path, std::vector<std::string> tokens) 
             else
             {
                 logDebug("setting Root location to: %s", tokens[i].c_str());
-                exit(1) ; // TODO: quiero entender esto          
-                new_location.setRootLocation(this->_root + tokens[i]);
+                std::string expanded_root = this->_root + tokens[i];
+                if (ConfigFile::getTypePath(expanded_root) != F_DIRECTORY)
+                    throw ErrorException(LOCATION_ERR_VALIDATION);
+                new_location.setRootLocation(expanded_root);
             }
         }
         else if ((tokens[i] == ALLOW_METHODS || tokens[i] == METHODS) && (i + 1) < tokens.size())
@@ -243,7 +251,7 @@ void ServerUnit::setLocation(std::string path, std::vector<std::string> tokens) 
                 {
                     methods.push_back(tokens[i]);
                     if (i + 1 >= tokens.size())
-                        throw ErrorException(TOKEN_ERR ": " + tokens[i] + "(missing semicolon)");    
+                        throw ErrorException(TOKEN_ERR ": " + tokens[i] + "(missing semicolon)");
                 }
             }
             new_location.setMethods(methods);
@@ -304,13 +312,13 @@ void ServerUnit::setLocation(std::string path, std::vector<std::string> tokens) 
             throw ErrorException(SYNTAX_ERR_CGI_EXT);
             if (cgi_path.size() < 3 || cgi_path[0] != '.' || cgi_path[1] != '/')
                 throw ErrorException(SYNTAX_ERR_CGI_PATH);
-            
+
             cgi_path = cgi_path.substr(2); // quitar './' al inicio
 
             // check dups
             if (new_location.getCgiHandler(extension) != "")
                 throw ErrorException(CGI_EXT_DUP_ERR + extension);
-            
+
             // add the asociation to the map in location
             new_location.addCgiHandler(extension, cgi_path);
             i += 2; // skip the processed tokens
@@ -355,9 +363,9 @@ int isValidCgiLocation(Location &location)
         std::string ext = it->first;
         std::string path = it->second;
         // Check if cgi path file exists and is executable
-        if (!ConfigFile::isFileExistAndExecutable("./", path))				
+        if (!ConfigFile::isFileExistAndExecutable("./", path))
             return (ER_VAL_CGI_PATH_NONEXE);
-    } 
+    }
     return (0);
 }
 
@@ -371,7 +379,7 @@ int ServerUnit::isValidLocation(Location &location) const // Check
          * location /cgi-bin/ {...
          */
         logError("Validating cgi-bin location: not supported");
-        exit(1);
+        return (ER_VAL_LOCATION);
 
     }
     else
@@ -500,7 +508,7 @@ const std::string &ServerUnit::getPathErrorPage(short key) // Check
     return (it->second);
 }
 
-const std::vector<Location>::iterator ServerUnit::getLocationKey(std::string key) // Check 
+const std::vector<Location>::iterator ServerUnit::getLocationKey(std::string key) // Check
 {
     std::vector<Location>::iterator it;
     for (it = this->_locations.begin(); it != this->_locations.end(); it++)
@@ -515,7 +523,7 @@ const std::vector<Location>::iterator ServerUnit::getLocationKey(std::string key
  * checkSemicolon: Checks if the given token ends with a semicolon
  * and delete the semicolon.
  */
-void ServerUnit::checkSemicolon(std::string &token) // Check 
+void ServerUnit::checkSemicolon(std::string &token) // Check
 {
     size_t pos = token.rfind(';');
     if (pos != token.size() - 1)
@@ -545,19 +553,26 @@ void ServerUnit::setUpIndividualServer()
         throw ErrorException(std::string(SOCKET_ERR) + strerror(errno));
 
     int opt = 1;
-    if (setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
-        throw ErrorException(std::string(SET_SOCKET_ERR) + strerror(errno));
-        
+    if (setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        int err = errno;
+        close(_listen_fd);
+        _listen_fd = -1;
+        throw ErrorException(std::string(SET_SOCKET_ERR) + strerror(err));
+    }
+
     set_nonblocking(_listen_fd);
 
     memset(&_server_address, 0, sizeof(_server_address));
     _server_address.sin_family = AF_INET;
     _server_address.sin_addr.s_addr = _host;
     // _server_address.sin_addr.s_addr = htonl(INADDR_ANY); // Accept connections from any IP
-    _server_address.sin_port = htons(_port); 
+    _server_address.sin_port = htons(_port);
 
     if (bind(_listen_fd, reinterpret_cast<sockaddr*>(&_server_address),
-             sizeof(_server_address)) == -1)
-        throw ErrorException(std::string(BIND_ERR) + strerror(errno));
+             sizeof(_server_address)) == -1) {
+        int err = errno;
+        close(_listen_fd);
+        _listen_fd = -1;
+        throw ErrorException(std::string(BIND_ERR) + strerror(err));
+    }
 }
-

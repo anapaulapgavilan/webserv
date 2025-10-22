@@ -1,4 +1,5 @@
 #include "../include/WebServ.hpp"
+#include <stdexcept>
 
 bool ServerManager::_running = true; // Initialize the static running variable
 
@@ -23,8 +24,8 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
 
     _servers = configs;
     logDebug("Setting up %zu server(s)", _servers.size());
-    
-    for (size_t i = 0; i < _servers.size(); ++i) 
+
+    for (size_t i = 0; i < _servers.size(); ++i)
     {
         ServerUnit &server = _servers[i];
         bool reused = false;
@@ -57,19 +58,22 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
         );
     }
 }
-void ServerManager::_init_server_unit(ServerUnit server) {
-    // listen
-    int fd = server.getFd();
-    if (listen(fd, BACKLOG_SIZE) < 0) {
-        logInfo("listen(%d) failed: %s", fd, strerror(errno));
-        exit(ERROR);
-    }
-    // Add to the read set
-    FD_SET(fd, &_read_fds);
-    // Update _max_fd
-    if (fd > _max_fd) _max_fd = fd;
-    logInfo("🐡 Server started on port %d", server.getPort());
 
+void ServerManager::_init_server_unit(ServerUnit &server) {
+    const int fd = server.getFd();
+    if (listen(fd, BACKLOG_SIZE) < 0) {
+        const int err = errno;
+        logError("listen(%d) failed: %s", fd, strerror(err));
+        close(fd);
+        _servers_map.erase(fd);
+        throw std::runtime_error("listen failed");
+    }
+
+    FD_SET(fd, &_read_fds);
+    if (fd > _max_fd)
+        _max_fd = fd;
+
+    logInfo("🐡 Server started on port %d", server.getPort());
 }
 
 int ServerManager::_get_client_server_fd(int client_socket) const {
@@ -87,9 +91,9 @@ void ServerManager::init()
     signal(SIGINT, ServerManager::_handle_signal); // Handle Ctrl+C
 
     FD_ZERO(&_read_fds);
-	FD_ZERO(&_write_fds);
+        FD_ZERO(&_write_fds);
 
-    for (size_t i = 0; i < _servers.size(); ++i) 
+    for (size_t i = 0; i < _servers.size(); ++i)
         _init_server_unit(_servers[i]); // Initialize each server unit
 
     fd_set temp_read_fds;
@@ -192,7 +196,7 @@ bool ServerManager::_should_close_connection(const std::string& request, const s
     if (in_str(request, "Connection: close")){
         logError("🐠 Closing connection (requested)");
         closing = true;
-    } 
+    }
     if (in_str(response, "Connection: close")) {
         logError("🐠 Closing connection (response)");
         closing = true;
@@ -211,7 +215,7 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     if (line_end == std::string::npos) return false; // faltan headers
     std::string req_line = cr.buffer.substr(0, line_end);
     {
-        // Método y path. 
+        // Método y path.
         size_t sp1 = req_line.find(' ');
         size_t sp2 = (sp1 == std::string::npos) ? std::string::npos : req_line.find(' ', sp1 + 1);
         if (sp1 != std::string::npos && sp2 != std::string::npos) {
@@ -389,7 +393,7 @@ bool ServerManager::_request_complete(const ClientRequest& clrequest) {
     size_t header_end = request.find("\r\n\r\n");
     if (header_end == std::string::npos)
         return false; // Headers incompletos
-  
+
     int content_length = clrequest.content_length;
     if (clrequest.headers_parsed && content_length == 0)
         return true; // No hay body esperado
@@ -538,7 +542,7 @@ void ServerManager::_apply_location_config(
         std::string methods = loc->getPrintMethods();
         throw HttpExceptionNotAllowed(methods);
     }
-    
+
     // Root
     if (!loc->getRootLocation().empty())
         root = loc->getRootLocation();
@@ -579,7 +583,7 @@ void ServerManager::_handle_directory_case(
     // index defined and exists -> use it
     if (!index.empty()) { // index defined
         std::string index_path = full_path + index;
-        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE) { 
+        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE) {
             full_path = index_path;
             logDebug("🍍 Directory index found: %s", index_path.c_str());
             return;
@@ -595,7 +599,6 @@ void ServerManager::_handle_directory_case(
         // No hay index y autoindex está deshabilitado → 404
         throw HttpException(HttpStatusCode::NotFound);
     }
-    
 }
 
 void ServerManager::_apply_redirection(const Location *loc) {
@@ -615,7 +618,7 @@ void ServerManager::_apply_redirection(const Location *loc) {
         return 302 http://example.com/other_new;
     }
 
-    --> o sea, con codigo de redireccion 
+    --> o sea, con codigo de redireccion
     ademas!! acepta return en server block y nosotros no.
     */
 }
@@ -634,14 +637,14 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     ServerUnit &server = _servers_map[server_fd];
     std::string path = request.getPath();
     path = path_normalization(clean_path(path));
-    
+
     // server block config
     std::string root = server.getRoot();
     std::string index = server.getIndex();
     bool autoindex = server.getAutoindex();
     bool used_alias = false;
     std::string full_path;
-    
+
     // 1. search best location and apply
     const Location *loc = _find_best_location(path, server.getLocations());
     _apply_redirection(loc);
@@ -655,7 +658,7 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     _handle_directory_case(full_path, path, index, autoindex, request);
 
     // checking the file existence is done by the methods resolver.
-    
+
     // finally, set the resolved path
     request.setPath(full_path);
 }
@@ -666,7 +669,7 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
     try {
         logDebug("\n----------\n⛺️Parsing request:\n%s", request_str.c_str());
         Request request(request_str);
-        if (request.getRet() != 200) 
+        if (request.getRet() != 200)
             throw HttpException(request.getRet());
         logDebug("🍅 Request parsed. Query: [%s:%s]",request.getMethod().c_str(),request.getPath().c_str());
         resolve_path(request, client_socket);
@@ -701,10 +704,9 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
         logDebug("response:\n%s\n-----", response_str.c_str());
 
     } catch (const std::exception &e) {
-        // raise exc?
         logError("Exception: %s", e.what());
-        //int code = HttpStatusCode::InternalServerError; // Default to 500 Internal Server
-        exit(1);
+        response_str = prepare_error_response(client_socket, HttpStatusCode::InternalServerError);
+        logInfo("response_str error ok");
     }
     logInfo("Done\n----------");
     return response_str;
@@ -745,7 +747,10 @@ std::string ServerManager::prepare_error_response(int client_socket, int code) {
             break;
         case HttpStatusCode::InternalServerError:
             logError("Error. %s. Acción: Revisar los registros del servidor.", message.c_str());
-            exit(2);
+            {
+                HttpResponse response(code);
+                response_str = response.getResponse();
+            }
             break;
         case HttpStatusCode::BadRequest:
             response_str =
@@ -779,6 +784,6 @@ void ServerManager::_cleanup_client(int client_sock) {
 }
 
 void ServerManager::_handle_signal(int signal) {
-	(void)signal;
+        (void)signal;
     ServerManager::_running = false;
 }
