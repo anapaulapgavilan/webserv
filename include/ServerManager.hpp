@@ -45,7 +45,7 @@ class ServerManager {
         ServerManager(const ServerManager &other);
         ServerManager &operator=(const ServerManager &other);
 
-        void _init_server_unit(ServerUnit server);
+        void _init_server_unit(ServerUnit &server);
         int _get_client_server_fd(int client_socket) const;
         bool parse_headers(int client_sock, ClientRequest &cr);
         bool _try_drain_and_adjust_response(int client_socket, std::string &response_str);

@@ -1,4 +1,5 @@
 #include "../include/WebServ.hpp"
+#include <limits.h>
 
 ServerUnit::ServerUnit() // Check
 {
@@ -94,15 +95,22 @@ void ServerUnit::setRoot(std::string root) // Check
     if (ConfigFile::getTypePath(root) == F_DIRECTORY)
     {
         this->_root = root;
-        return ;
     }
-    // if it is not a directory:
-    char dir[1024];
-    getcwd(dir, 1024);
-    std::string full_root = dir + root;
-    if (ConfigFile::getTypePath(full_root) != F_DIRECTORY)
-        throw ErrorException(SYNTAX_ERR_ROOT);
-    this->_root = full_root;
+    else
+    {
+        char dir[PATH_MAX];
+        if (!getcwd(dir, sizeof(dir)))
+            throw ErrorException(std::string(SYNTAX_ERR_ROOT) + ": unable to resolve current directory");
+        std::string full_root = std::string(dir);
+        if (!full_root.empty() && full_root[full_root.size() - 1] != '/')
+            full_root += "/";
+        full_root += root;
+        if (ConfigFile::getTypePath(full_root) != F_DIRECTORY)
+            throw ErrorException(SYNTAX_ERR_ROOT);
+        this->_root = full_root;
+    }
+    if (!_root.empty() && _root[_root.size() - 1] != '/')
+        _root += "/";
 }
 
 void ServerUnit::setPort(std::string token) // Check 
@@ -545,19 +553,27 @@ void ServerUnit::setUpIndividualServer()
         throw ErrorException(std::string(SOCKET_ERR) + strerror(errno));
 
     int opt = 1;
-    if (setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
-        throw ErrorException(std::string(SET_SOCKET_ERR) + strerror(errno));
-        
+    if (setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        int err = errno;
+        close(_listen_fd);
+        _listen_fd = -1;
+        throw ErrorException(std::string(SET_SOCKET_ERR) + strerror(err));
+    }
+
     set_nonblocking(_listen_fd);
 
     memset(&_server_address, 0, sizeof(_server_address));
     _server_address.sin_family = AF_INET;
     _server_address.sin_addr.s_addr = _host;
     // _server_address.sin_addr.s_addr = htonl(INADDR_ANY); // Accept connections from any IP
-    _server_address.sin_port = htons(_port); 
+    _server_address.sin_port = htons(_port);
 
     if (bind(_listen_fd, reinterpret_cast<sockaddr*>(&_server_address),
-             sizeof(_server_address)) == -1)
-        throw ErrorException(std::string(BIND_ERR) + strerror(errno));
+             sizeof(_server_address)) == -1) {
+        int err = errno;
+        close(_listen_fd);
+        _listen_fd = -1;
+        throw ErrorException(std::string(BIND_ERR) + strerror(err));
+    }
 }
 

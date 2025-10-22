@@ -58,20 +58,21 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
         );
     }
 }
-void ServerManager::_init_server_unit(ServerUnit server) {
-    // listen
-    int fd = server.getFd();
+void ServerManager::_init_server_unit(ServerUnit &server) {
+    const int fd = server.getFd();
     if (listen(fd, BACKLOG_SIZE) < 0) {
-        logError("listen(%d) failed: %s", fd, strerror(errno));
+        const int err = errno;
+        logError("listen(%d) failed: %s", fd, strerror(err));
         close(fd);
+        _servers_map.erase(fd);
         throw std::runtime_error("listen failed");
     }
-    // Add to the read set
-    FD_SET(fd, &_read_fds);
-    // Update _max_fd
-    if (fd > _max_fd) _max_fd = fd;
-    logInfo("🐡 Server started on port %d", server.getPort());
 
+    FD_SET(fd, &_read_fds);
+    if (fd > _max_fd)
+        _max_fd = fd;
+
+    logInfo("🐡 Server started on port %d", server.getPort());
 }
 
 int ServerManager::_get_client_server_fd(int client_socket) const {
@@ -91,7 +92,7 @@ void ServerManager::init()
     FD_ZERO(&_read_fds);
 	FD_ZERO(&_write_fds);
 
-    for (size_t i = 0; i < _servers.size(); ++i) 
+    for (size_t i = 0; i < _servers.size(); ++i)
         _init_server_unit(_servers[i]); // Initialize each server unit
 
     fd_set temp_read_fds;
