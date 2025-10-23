@@ -24,8 +24,8 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
 
     _servers = configs;
     logDebug("Setting up %zu server(s)", _servers.size());
-
-    for (size_t i = 0; i < _servers.size(); ++i)
+    
+    for (size_t i = 0; i < _servers.size(); ++i) 
     {
         ServerUnit &server = _servers[i];
         bool reused = false;
@@ -90,7 +90,7 @@ void ServerManager::init()
     signal(SIGINT, ServerManager::_handle_signal); // Handle Ctrl+C
 
     FD_ZERO(&_read_fds);
-        FD_ZERO(&_write_fds);
+	FD_ZERO(&_write_fds);
 
     for (size_t i = 0; i < _servers.size(); ++i)
         _init_server_unit(_servers[i]); // Initialize each server unit
@@ -195,7 +195,7 @@ bool ServerManager::_should_close_connection(const std::string& request, const s
     if (in_str(request, "Connection: close")){
         logError("🐠 Closing connection (requested)");
         closing = true;
-    }
+    } 
     if (in_str(response, "Connection: close")) {
         logError("🐠 Closing connection (response)");
         closing = true;
@@ -214,7 +214,7 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     if (line_end == std::string::npos) return false; // faltan headers
     std::string req_line = cr.buffer.substr(0, line_end);
     {
-        // Método y path.
+        // Método y path. 
         size_t sp1 = req_line.find(' ');
         size_t sp2 = (sp1 == std::string::npos) ? std::string::npos : req_line.find(' ', sp1 + 1);
         if (sp1 != std::string::npos && sp2 != std::string::npos) {
@@ -386,7 +386,7 @@ bool ServerManager::_request_complete(const ClientRequest& clrequest) {
     size_t header_end = request.find("\r\n\r\n");
     if (header_end == std::string::npos)
         return false; // Headers incompletos
-
+  
     int content_length = clrequest.content_length;
     if (clrequest.headers_parsed && content_length == 0)
         return true; // No hay body esperado
@@ -397,83 +397,15 @@ bool ServerManager::_request_complete(const ClientRequest& clrequest) {
     return body_size >= (size_t)content_length;
 }
 
-// Check if buffer contains the terminating chunk ("0\r\n") for chunked bodies
-bool buffer_has_final_chunk(const std::string &buffer) {
-    // Search for "\r\n0\r\n" or start-of-buffer "0\r\n"
-    if (buffer.find("\r\n0\r\n") != std::string::npos) return true;
-    if (buffer.size() >= 3) {
-        // also allow if buffer ends with "0\r\n" without leading CRLF
-        size_t len = buffer.size();
-        if (buffer.substr(len - 3) == "0\r\n") return true;
-    }
-    return false;
-}
-
-// Drain remaining body from socket for chunked or content-length requests.
-// Returns true if successfully drained (or there was nothing to drain), false on error/timeout.
-bool ServerManager::_drain_request_body(int client_sock, ClientRequest &cr) {
-    char buf[BUFFER_SIZE];
-    int n;
-    // If we already have the terminating chunk in the buffer, nothing to read
-    if (cr.is_chunked && buffer_has_final_chunk(cr.buffer))
-        return true;
-
-    // If content-length known: read until we have all bytes
-    if (cr.content_length >= 0) {
-        size_t body_start = cr.body_start;
-        size_t have = (cr.current_size > body_start) ? (cr.current_size - body_start) : 0;
-        long remaining = cr.content_length - (long)have;
-        while (remaining > 0) {
-            n = recv(client_sock, buf, sizeof(buf), 0);
-            if (n > 0) {
-                remaining -= n;
-            } else if (n == 0) {
-                // client closed early
-                return false;
-            } else {
-                if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                    // no more data now; give up
-                    return false;
-                }
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // If chunked: read until we see the terminating chunk 0\r\n
-    if (cr.is_chunked) {
-        std::string tmp;
-        while (true) {
-            n = recv(client_sock, buf, sizeof(buf), 0);
-            if (n > 0) {
-                tmp.append(buf, n);
-                if (buffer_has_final_chunk(tmp)) return true;
-                // continue reading
-                continue;
-            } else if (n == 0) {
-                // client closed; check if tmp had final chunk
-                return buffer_has_final_chunk(tmp);
-            } else {
-                if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                    // no more data now
-                    return false;
-                }
-                return false;
-            }
-        }
-    }
-    // Nothing to drain
-    return true;
-}
 /**
- * If the request has a body (chunked or content-length), try to read and discard it.
- * Returns true if the body was fully drained (or there was no body to drain).
- * Returns false if draining failed (error, timeout, incomplete).
- * If true is returned, the response string is adjusted to remove "Connection: close"
- * so that the connection can be reused.
+ * If the request has a body (chunked or content-length), the connection must be
+ * closed after the response unless we have already consumed the entire body from
+ * the socket. We never issue additional read calls here to remain compliant with
+ * the one-read-per-select rule, so returning false simply signals the caller to
+ * keep the "Connection: close" header in place.
  */
 bool ServerManager::_try_drain_and_adjust_response(int client_socket, std::string &response_str) {
+    (void)response_str;
     // get ClientRequest
     std::map<int, ClientRequest>::iterator it = _read_requests.find(client_socket);
     if (it == _read_requests.end()) return false;
@@ -481,20 +413,8 @@ bool ServerManager::_try_drain_and_adjust_response(int client_socket, std::strin
     // If there is no body to drain, nothing to do
     if (!(cr.is_chunked || cr.content_length >= 0)) return true;
 
-    logDebug("Attempting to drain request body for client %d", client_socket);
-    bool drained = _drain_request_body(client_socket, cr);
-    if (!drained) {
-        logDebug("Draining failed for client %d; will close connection after response", client_socket);
-        return false;
-    }
-    // We consumed it: reset request state and remove Connection: close from response
-    cr.buffer.clear(); cr.current_size = 0; cr.header_end = std::string::npos;
-    cr.body_start = 0; cr.content_length = -1; cr.headers_parsed = false; cr.is_chunked = false;
-    size_t pos = response_str.find("Connection: close");
-    if (pos != std::string::npos) {
-        response_str.erase(pos, strlen("Connection: close"));
-    }
-    return true;
+    logDebug("Connection %d will be closed after response to avoid extra read()", client_socket);
+    return false;
 }
 
 const Location* ServerManager::_find_best_location(const std::string& request_path, const std::vector<Location> &locations) const{
@@ -535,7 +455,7 @@ void ServerManager::_apply_location_config(
         std::string methods = loc->getPrintMethods();
         throw HttpExceptionNotAllowed(methods);
     }
-
+    
     // Root
     if (!loc->getRootLocation().empty())
         root = loc->getRootLocation();
@@ -576,7 +496,7 @@ void ServerManager::_handle_directory_case(
     // index defined and exists -> use it
     if (!index.empty()) { // index defined
         std::string index_path = full_path + index;
-        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE) {
+        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE) { 
             full_path = index_path;
             logDebug("🍍 Directory index found: %s", index_path.c_str());
             return;
@@ -592,6 +512,7 @@ void ServerManager::_handle_directory_case(
         // No hay index y autoindex está deshabilitado → 404
         throw HttpException(HttpStatusCode::NotFound);
     }
+    
 }
 
 void ServerManager::_apply_redirection(const Location *loc) {
@@ -611,7 +532,7 @@ void ServerManager::_apply_redirection(const Location *loc) {
         return 302 http://example.com/other_new;
     }
 
-    --> o sea, con codigo de redireccion
+    --> o sea, con codigo de redireccion 
     ademas!! acepta return en server block y nosotros no.
     */
 }
@@ -630,14 +551,14 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     ServerUnit &server = _servers_map[server_fd];
     std::string path = request.getPath();
     path = path_normalization(clean_path(path));
-
+    
     // server block config
     std::string root = server.getRoot();
     std::string index = server.getIndex();
     bool autoindex = server.getAutoindex();
     bool used_alias = false;
     std::string full_path;
-
+    
     // 1. search best location and apply
     const Location *loc = _find_best_location(path, server.getLocations());
     _apply_redirection(loc);
@@ -651,7 +572,7 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     _handle_directory_case(full_path, path, index, autoindex, request);
 
     // checking the file existence is done by the methods resolver.
-
+    
     // finally, set the resolved path
     request.setPath(full_path);
 }
@@ -662,7 +583,7 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
     try {
         logDebug("\n----------\n⛺️Parsing request:\n%s", request_str.c_str());
         Request request(request_str);
-        if (request.getRet() != 200)
+        if (request.getRet() != 200) 
             throw HttpException(request.getRet());
         logDebug("🍅 Request parsed. Query: [%s:%s]",request.getMethod().c_str(),request.getPath().c_str());
         resolve_path(request, client_socket);
@@ -777,6 +698,6 @@ void ServerManager::_cleanup_client(int client_sock) {
 }
 
 void ServerManager::_handle_signal(int signal) {
-        (void)signal;
+	(void)signal;
     ServerManager::_running = false;
 }

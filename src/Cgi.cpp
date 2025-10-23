@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <cstring>
+#include <cerrno>
 #include <stdexcept>
 #include <vector>
 #include <sstream>
@@ -87,18 +88,49 @@ std::string Cgi::executeCgi(const Request& req) {
         envp.push_back(NULL);
         execve(_scriptPath.c_str(), args, &envp[0]);
         logError("CGI execve failed: %s", strerror(errno));
-        throw HttpException(HttpStatusCode::InternalServerError);
+        _exit(EXIT_FAILURE);
     } else {
         close(stdin_pipe[0]);
         close(stdout_pipe[1]);
 
-        write(stdin_pipe[1], req.getBody().data(), req.getBody().size());
-        close(stdin_pipe[1]); 
+        const std::string &body = req.getBody();
+        size_t total_written = 0;
+        while (total_written < body.size()) {
+            ssize_t written = write(stdin_pipe[1], body.data() + total_written,
+                                    body.size() - total_written);
+            if (written < 0) {
+                if (errno == EINTR)
+                    continue;
+                close(stdin_pipe[1]);
+                close(stdout_pipe[0]);
+                waitpid(pid, NULL, 0);
+                throw HttpException(HttpStatusCode::InternalServerError);
+            }
+            if (written == 0) {
+                close(stdin_pipe[1]);
+                close(stdout_pipe[0]);
+                waitpid(pid, NULL, 0);
+                throw HttpException(HttpStatusCode::InternalServerError);
+            }
+            total_written += static_cast<size_t>(written);
+        }
+        close(stdin_pipe[1]);
 
         char buffer[4096];
         ssize_t bytesRead;
-        while ((bytesRead = read(stdout_pipe[0], buffer, sizeof(buffer))) > 0) {
-            output.append(buffer, bytesRead);
+        while (true) {
+            bytesRead = read(stdout_pipe[0], buffer, sizeof(buffer));
+            if (bytesRead > 0) {
+                output.append(buffer, bytesRead);
+            } else if (bytesRead == 0) {
+                break;
+            } else {
+                if (errno == EINTR)
+                    continue;
+                close(stdout_pipe[0]);
+                waitpid(pid, NULL, 0);
+                throw HttpException(HttpStatusCode::InternalServerError);
+            }
         }
 
         close(stdout_pipe[0]);
