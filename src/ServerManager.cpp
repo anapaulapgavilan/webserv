@@ -1,36 +1,39 @@
 #include "../include/WebServ.hpp"
 #include <stdexcept>
 
-bool ServerManager::_running = true; // Initialize the static running variable
+bool ServerManager::_running = true;
 
 ClientRequest::ClientRequest()
-        : buffer(""), max_size(0), current_size(0), content_length(-1), is_chunked(false),
-            header_end(std::string::npos), body_start(0),
-            request_path(""), method(""), headers_parsed(false) {}
+    : buffer(""), max_size(0), current_size(0), content_length(-1), is_chunked(false),
+      header_end(std::string::npos), body_start(0),
+      request_path(""), method(""), headers_parsed(false) {}
 
-void ClientRequest::append_to_buffer(const std::string& chunk) {
+void ClientRequest::append_to_buffer(const std::string &chunk)
+{
     buffer += chunk;
     current_size += chunk.size();
 }
 
 ServerManager::ServerManager()
-  : _max_fd(0)
+    : _max_fd(0)
 {
 }
 
-ServerManager::~ServerManager(){}
+ServerManager::~ServerManager() {}
 
-void ServerManager::setup(const std::vector<ServerUnit>& configs) {
+void ServerManager::setup(const std::vector<ServerUnit> &configs)
+{
 
     _servers = configs;
     logDebug("Setting up %zu server(s)", _servers.size());
-    
-    for (size_t i = 0; i < _servers.size(); ++i) 
+
+    for (size_t i = 0; i < _servers.size(); ++i)
     {
         ServerUnit &server = _servers[i];
         bool reused = false;
 
-        for (size_t j = 0; j < i; ++j) {
+        for (size_t j = 0; j < i; ++j)
+        {
             const ServerUnit &prev = _servers[j];
             if (prev.getHost() == server.getHost() &&
                 prev.getPort() == server.getPort())
@@ -41,7 +44,8 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
             }
         }
 
-        if (!reused) {
+        if (!reused)
+        {
             server.setUpIndividualServer();
         }
 
@@ -54,13 +58,14 @@ void ServerManager::setup(const std::vector<ServerUnit>& configs) {
             server.getServerName().c_str(),
             ipbuf,
             server.getPort(),
-            server.getFd()
-        );
+            server.getFd());
     }
 }
-void ServerManager::_init_server_unit(ServerUnit &server) {
+void ServerManager::_init_server_unit(ServerUnit &server)
+{
     const int fd = server.getFd();
-    if (listen(fd, BACKLOG_SIZE) < 0) {
+    if (listen(fd, BACKLOG_SIZE) < 0)
+    {
         const int err = errno;
         logError("listen(%d) failed: %s", fd, strerror(err));
         close(fd);
@@ -75,14 +80,15 @@ void ServerManager::_init_server_unit(ServerUnit &server) {
     logInfo("🐡 Server started on port %d", server.getPort());
 }
 
-int ServerManager::_get_client_server_fd(int client_socket) const {
+int ServerManager::_get_client_server_fd(int client_socket) const
+{
     std::map<int, int>::const_iterator it = _client_server_map.find(client_socket);
-    if (it == _client_server_map.end()) {
+    if (it == _client_server_map.end())
+    {
         return -1;
     }
     return it->second;
 }
-
 
 void ServerManager::init()
 {
@@ -90,34 +96,43 @@ void ServerManager::init()
     signal(SIGINT, ServerManager::_handle_signal); // Handle Ctrl+C
 
     FD_ZERO(&_read_fds);
-	FD_ZERO(&_write_fds);
+    FD_ZERO(&_write_fds);
 
     for (size_t i = 0; i < _servers.size(); ++i)
         _init_server_unit(_servers[i]); // Initialize each server unit
 
     fd_set temp_read_fds;
     fd_set temp_write_fds;
-    while (_running) {
+    while (_running)
+    {
         temp_read_fds = _read_fds;
         temp_write_fds = _write_fds;
 
         int activity = select(_max_fd + 1, &temp_read_fds, &temp_write_fds, NULL, NULL);
-        if (activity < 0) {
-            if (errno == EINTR) continue; // Interrupted by signal
+        if (activity < 0)
+        {
+            if (errno == EINTR)
+                continue; // Interrupted by signal
             logInfo("Failed to select on sockets");
         }
 
-        for (int fd = 0; fd <= _max_fd; ++fd) {
-            if (FD_ISSET(fd, &temp_read_fds)) {
-                if (_servers_map.find(fd) != _servers_map.end()) {
+        for (int fd = 0; fd <= _max_fd; ++fd)
+        {
+            if (FD_ISSET(fd, &temp_read_fds))
+            {
+                if (_servers_map.find(fd) != _servers_map.end())
+                {
                     // The fd belongs to a server that has a new connection
                     _handle_new_connection(fd);
-                } else {
+                }
+                else
+                {
                     // The fd belongs to a client that is sending data
                     _handle_read(fd);
                 }
             }
-            if (FD_ISSET(fd, &temp_write_fds)) {
+            if (FD_ISSET(fd, &temp_write_fds))
+            {
                 // The fd belongs to a client that is ready to write data
                 _handle_write(fd);
             }
@@ -126,14 +141,17 @@ void ServerManager::init()
     logInfo("\nServers shutting down...");
 }
 
-void ServerManager::_handle_new_connection(int listening_socket) {
+void ServerManager::_handle_new_connection(int listening_socket)
+{
     int client_sock = accept(listening_socket, NULL, NULL);
-    if (client_sock < 0) {
+    if (client_sock < 0)
+    {
         logError("Failed to accept new connection on socket %d: %s", listening_socket, strerror(errno));
         return;
     }
 
-    if (client_sock >= FD_SETSIZE) {
+    if (client_sock >= FD_SETSIZE)
+    {
         logError("Too many open files, cannot accept new connection on socket %d", listening_socket);
         close(client_sock);
         return;
@@ -141,16 +159,18 @@ void ServerManager::_handle_new_connection(int listening_socket) {
 
     set_nonblocking(client_sock);
     FD_SET(client_sock, &_read_fds);
-    if (client_sock > _max_fd) _max_fd = client_sock;
+    if (client_sock > _max_fd)
+        _max_fd = client_sock;
 
     _client_server_map[client_sock] = listening_socket; // Map client socket to server socket
-    _read_requests[client_sock] = ClientRequest(); // Initialize Request object for the new client
-    _write_buffer[client_sock] = ""; // Initialize write buffer for the new client
-    _bytes_sent[client_sock] = 0; // Initialize bytes sent for the new client
+    _read_requests[client_sock] = ClientRequest();      // Initialize Request object for the new client
+    _write_buffer[client_sock] = "";                    // Initialize write buffer for the new client
+    _bytes_sent[client_sock] = 0;                       // Initialize bytes sent for the new client
     logInfo("🐠 New connection accepted on socket %d. Listening socket: %d", client_sock, listening_socket);
 }
 
-void ServerManager::_handle_write(int client_sock) {
+void ServerManager::_handle_write(int client_sock)
+{
 
     std::string remaining_response = _write_buffer[client_sock].substr(_bytes_sent[client_sock]);
     /*
@@ -170,16 +190,21 @@ void ServerManager::_handle_write(int client_sock) {
     logInfo("🐠 Sending response to client socket %d", client_sock);
     size_t n = send(client_sock, remaining_response.c_str(), remaining_response.size(), 0);
 
-    if (n <= 0) {
+    if (n <= 0)
+    {
         _cleanup_client(client_sock);
         logError("Failed to send data to client socket %d: %s. Connection closed.", client_sock, strerror(errno));
         return;
     }
     _bytes_sent[client_sock] += n;
-    if (_bytes_sent[client_sock] == _write_buffer[client_sock].size()) {
-       if (_should_close_connection(_read_requests[client_sock].buffer, _write_buffer[client_sock])) {
+    if (_bytes_sent[client_sock] == _write_buffer[client_sock].size())
+    {
+        if (_should_close_connection(_read_requests[client_sock].buffer, _write_buffer[client_sock]))
+        {
             _cleanup_client(client_sock);
-        } else {
+        }
+        else
+        {
             // Mantener la conexión: limpiar buffers y volver a modo lectura
             _read_requests[client_sock] = ClientRequest(); // Reset the Request object
             _write_buffer[client_sock].clear();
@@ -189,35 +214,42 @@ void ServerManager::_handle_write(int client_sock) {
         }
     }
 }
-bool ServerManager::_should_close_connection(const std::string& request, const std::string& response) {
+bool ServerManager::_should_close_connection(const std::string &request, const std::string &response)
+{
     // Check if the request or response contains "Connection: close"
     bool closing = false;
-    if (in_str(request, "Connection: close")){
+    if (in_str(request, "Connection: close"))
+    {
         logError("🐠 Closing connection (requested)");
         closing = true;
-    } 
-    if (in_str(response, "Connection: close")) {
+    }
+    if (in_str(response, "Connection: close"))
+    {
         logError("🐠 Closing connection (response)");
         closing = true;
     }
     return closing;
 }
 
-bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
+bool ServerManager::parse_headers(int client_sock, ClientRequest &cr)
+{
     // Extraer Path y Content-Length si existe
     cr.header_end = cr.buffer.find("\r\n\r\n");
-    if (cr.header_end == std::string::npos) return false; // faltan headers
+    if (cr.header_end == std::string::npos)
+        return false; // faltan headers
     cr.body_start = cr.header_end + 4;
 
     // Primera línea. Request line: "GET /path HTTP/1.1"
     size_t line_end = cr.buffer.find("\r\n");
-    if (line_end == std::string::npos) return false; // faltan headers
+    if (line_end == std::string::npos)
+        return false; // faltan headers
     std::string req_line = cr.buffer.substr(0, line_end);
     {
-        // Método y path. 
+        // Método y path.
         size_t sp1 = req_line.find(' ');
         size_t sp2 = (sp1 == std::string::npos) ? std::string::npos : req_line.find(' ', sp1 + 1);
-        if (sp1 != std::string::npos && sp2 != std::string::npos) {
+        if (sp1 != std::string::npos && sp2 != std::string::npos)
+        {
             cr.method = req_line.substr(0, sp1);
             cr.request_path = req_line.substr(sp1 + 1, sp2 - sp1 - 1);
         }
@@ -225,24 +257,31 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     // Headers
     cr.content_length = -1;
     size_t pos = line_end + 2;
-    while (pos < cr.header_end) {
+    while (pos < cr.header_end)
+    {
         size_t next = cr.buffer.find("\r\n", pos);
-        if (next == std::string::npos || next > cr.header_end) break;
+        if (next == std::string::npos || next > cr.header_end)
+            break;
         std::string line = cr.buffer.substr(pos, next - pos);
         size_t colon = line.find(':');
-        if (colon != std::string::npos) {
+        if (colon != std::string::npos)
+        {
             std::string key = line.substr(0, colon);
             std::string val = line.substr(colon + 1);
             strip(key, ' ');
             strip(val, ' ');
-            if (ci_equal(key, "Content-Length")) {
+            if (ci_equal(key, "Content-Length"))
+            {
                 cr.content_length = strtol(val.c_str(), NULL, 10);
-                if (cr.content_length < 0) cr.content_length = -1;
+                if (cr.content_length < 0)
+                    cr.content_length = -1;
             }
-            if (ci_equal(key, "Transfer-Encoding")) {
+            if (ci_equal(key, "Transfer-Encoding"))
+            {
                 std::string lower = val;
                 to_lower(lower);
-                if (lower.find("chunked") != std::string::npos) {
+                if (lower.find("chunked") != std::string::npos)
+                {
                     cr.is_chunked = true;
                 }
             }
@@ -252,12 +291,13 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     }
     // Determinar max_size (location > server)
     int server_fd = _get_client_server_fd(client_sock);
-    if (server_fd < 0) {
+    if (server_fd < 0)
+    {
         logError("Could not find server for client socket %d", client_sock);
         return false;
     }
     ServerUnit &server = _servers_map[server_fd];
-    const Location* loc = _find_best_location(cr.request_path, server.getLocations());
+    const Location *loc = _find_best_location(cr.request_path, server.getLocations());
     if (loc)
         cr.max_size = loc->getMaxBodySize();
     else
@@ -266,8 +306,8 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     cr.headers_parsed = true;
 
     // Si hay Content-Length y supera el límite, corta ya (como Nginx)
-    if (cr.max_size > 0 && cr.content_length >= 0
-        && (size_t)cr.content_length > cr.max_size) {
+    if (cr.max_size > 0 && cr.content_length >= 0 && (size_t)cr.content_length > cr.max_size)
+    {
         // Señal para el caller: devolverá 413
         logError("Payload declared too large: CL=%ld > limit=%zu",
                  cr.content_length, cr.max_size);
@@ -275,22 +315,26 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
     return true;
 }
 
-void ServerManager::_handle_read(int client_sock) {
+void ServerManager::_handle_read(int client_sock)
+{
     char buffer[BUFFER_SIZE];
 
     logInfo("🐟 Client connected on socket %d", client_sock);
     ClientRequest &cr = _read_requests[client_sock];
 
     int n = recv(client_sock, buffer, sizeof(buffer), 0);
-    if (n > 0) {
+    if (n > 0)
+    {
         cr.append_to_buffer(std::string(buffer, n));
 
-        if (!cr.headers_parsed) {
-            if (!parse_headers(client_sock, cr)) {
+        if (!cr.headers_parsed)
+        {
+            if (!parse_headers(client_sock, cr))
+            {
                 return;
             }
-            if (cr.max_size > 0 && cr.content_length >= 0
-                && (size_t)cr.content_length > cr.max_size) {
+            if (cr.max_size > 0 && cr.content_length >= 0 && (size_t)cr.content_length > cr.max_size)
+            {
                 _write_buffer[client_sock] =
                     "HTTP/1.1 413 Payload Too Large\r\n"
                     "Content-Type: text/html\r\n"
@@ -303,12 +347,14 @@ void ServerManager::_handle_read(int client_sock) {
             }
         }
 
-        if (cr.headers_parsed) {
+        if (cr.headers_parsed)
+        {
             size_t body_bytes = (cr.current_size > cr.body_start)
-                                ? (cr.current_size - cr.body_start)
-                                : 0;
+                                    ? (cr.current_size - cr.body_start)
+                                    : 0;
 
-            if (cr.max_size > 0 && body_bytes > cr.max_size) {
+            if (cr.max_size > 0 && body_bytes > cr.max_size)
+            {
                 logError("Client %d exceeded max body size (body=%zu > %zu). 413.",
                          client_sock, body_bytes, cr.max_size);
                 _write_buffer[client_sock] =
@@ -323,12 +369,16 @@ void ServerManager::_handle_read(int client_sock) {
             }
 
             bool complete = false;
-            if (cr.content_length < 0) {
+            if (cr.content_length < 0)
+            {
                 complete = true;
-            } else {
+            }
+            else
+            {
                 complete = (body_bytes >= (size_t)cr.content_length);
             }
-            if (complete) {
+            if (complete)
+            {
                 logInfo("🐠 Request complete from client socket %d", client_sock);
                 _write_buffer[client_sock] = prepare_response(client_sock, cr.buffer);
                 _bytes_sent[client_sock] = 0;
@@ -340,39 +390,53 @@ void ServerManager::_handle_read(int client_sock) {
         return;
     }
 
-    if (n < 0) {
+    if (n < 0)
+    {
         logError("Failed to receive data from client");
         _cleanup_client(client_sock);
         return;
     }
 
-    if (n == 0) {
+    if (n == 0)
+    {
         // el cliente cerró la conexión.
         // Cierre del peer: decide con lo que tengas
-        if (cr.headers_parsed) {
+        if (cr.headers_parsed)
+        {
             size_t body_bytes = (cr.current_size > cr.body_start)
-                                ? (cr.current_size - cr.body_start)
-                                : 0;
-            if (cr.content_length < 0 || body_bytes >= (size_t)cr.content_length) {
+                                    ? (cr.current_size - cr.body_start)
+                                    : 0;
+            if (cr.content_length < 0 || body_bytes >= (size_t)cr.content_length)
+            {
                 logDebug("content_length: %ld, body_bytes: %zu", cr.content_length, body_bytes);
                 logInfo("🐠 Request complete from client socket %d (on close)", client_sock);
                 // last opportunity to respond
                 _write_buffer[client_sock] = prepare_response(client_sock, cr.buffer);
-            } else {
+            }
+            else
+            {
                 logError("Client disconnected before sending full body on socket %d. 400.", client_sock);
+                std::string body = "<h1>400 Bad Request</h1>";
                 _write_buffer[client_sock] =
                     "HTTP/1.1 400 Bad Request\r\n"
                     "Content-Type: text/html\r\n"
-                    "Connection: close\r\n\r\n"
-                    "<h1>400 Bad Request</h1>";
+                    "Content-Length: " +
+                    to_string(body.length()) + "\r\n"
+                                               "Connection: close\r\n\r\n" +
+                    body;
             }
-        } else {
+        }
+        else
+        {
             logError("Client disconnected before sending headers on socket %d. 400.", client_sock);
+            std::string body = "<h1>400 Bad Request</h1>";
             _write_buffer[client_sock] =
                 "HTTP/1.1 400 Bad Request\r\n"
                 "Content-Type: text/html\r\n"
-                "Connection: close\r\n\r\n"
-                "<h1>400 Bad Request</h1>";
+                "Content-Length: " +
+                to_string(body.length()) + "\r\n"
+                                           "Connection: close\r\n\r\n" +
+                body;
         }
         _bytes_sent[client_sock] = 0;
         FD_CLR(client_sock, &_read_fds);
@@ -381,12 +445,13 @@ void ServerManager::_handle_read(int client_sock) {
     }
 }
 
-bool ServerManager::_request_complete(const ClientRequest& clrequest) {
-    const std::string& request = clrequest.buffer;
+bool ServerManager::_request_complete(const ClientRequest &clrequest)
+{
+    const std::string &request = clrequest.buffer;
     size_t header_end = request.find("\r\n\r\n");
     if (header_end == std::string::npos)
         return false; // Headers incompletos
-  
+
     int content_length = clrequest.content_length;
     if (clrequest.headers_parsed && content_length == 0)
         return true; // No hay body esperado
@@ -404,30 +469,37 @@ bool ServerManager::_request_complete(const ClientRequest& clrequest) {
  * the one-read-per-select rule, so returning false simply signals the caller to
  * keep the "Connection: close" header in place.
  */
-bool ServerManager::_try_drain_and_adjust_response(int client_socket, std::string &response_str) {
+bool ServerManager::_try_drain_and_adjust_response(int client_socket, std::string &response_str)
+{
     (void)response_str;
     // get ClientRequest
     std::map<int, ClientRequest>::iterator it = _read_requests.find(client_socket);
-    if (it == _read_requests.end()) return false;
+    if (it == _read_requests.end())
+        return false;
     ClientRequest &cr = it->second;
     // If there is no body to drain, nothing to do
-    if (!(cr.is_chunked || cr.content_length >= 0)) return true;
+    if (!(cr.is_chunked || cr.content_length >= 0))
+        return true;
 
     logDebug("Connection %d will be closed after response to avoid extra read()", client_socket);
     return false;
 }
 
-const Location* ServerManager::_find_best_location(const std::string& request_path, const std::vector<Location> &locations) const{
-    const Location* best_match = NULL;
+const Location *ServerManager::_find_best_location(const std::string &request_path, const std::vector<Location> &locations) const
+{
+    const Location *best_match = NULL;
     size_t best_len = 0;
 
-    for (size_t i = 0; i < locations.size(); ++i) {
-        const Location& loc = locations[i];
+    for (size_t i = 0; i < locations.size(); ++i)
+    {
+        const Location &loc = locations[i];
 
         std::string loc_path = loc.getPathLocation();
-        if (path_matches(loc_path, request_path)) {
+        if (path_matches(loc_path, request_path))
+        {
             // Preferimos el que tenga el prefix MÁS LARGO
-            if (loc_path.size() > best_len) {
+            if (loc_path.size() > best_len)
+            {
                 best_match = &loc;
                 best_len = loc_path.size();
             }
@@ -443,25 +515,27 @@ void ServerManager::_apply_location_config(
     std::string &full_path,
     const std::string &request_path,
     const std::string &request_method,
-    bool &used_alias
-) {
+    bool &used_alias)
+{
     if (!loc)
         return;
 
     logDebug("🍍 Location matched: %s", loc->getPathLocation().c_str());
 
     // Verificar métodos permitidos
-    if (!loc->getMethods()[method_toEnum(request_method)]) {
+    if (!loc->getMethods()[method_toEnum(request_method)])
+    {
         std::string methods = loc->getPrintMethods();
         throw HttpExceptionNotAllowed(methods);
     }
-    
+
     // Root
     if (!loc->getRootLocation().empty())
         root = loc->getRootLocation();
 
     // Alias
-    if (!loc->getAlias().empty()) { // ONLY ABSOLUTE ALIAS SUPPORTED
+    if (!loc->getAlias().empty())
+    { // ONLY ABSOLUTE ALIAS SUPPORTED
         full_path = loc->getAlias() + request_path.substr(loc->getPathLocation().size());
         used_alias = true;
         logDebug("🍍 Using alias: %s -> %s", request_path.c_str(), full_path.c_str());
@@ -481,42 +555,48 @@ void ServerManager::_handle_directory_case(
     const std::string &request_path,
     const std::string &index,
     bool autoindex,
-    Request &request
-) {
+    Request &request)
+{
     if (ConfigFile::getTypePath(full_path) != F_DIRECTORY)
         return;
     logDebug("🍍 Handling directory case for path: %s", full_path.c_str());
 
     // without trailing slash -> redirect
-    if (!request_path.empty() && request_path[request_path.size() - 1] != '/') {
+    if (!request_path.empty() && request_path[request_path.size() - 1] != '/')
+    {
         std::string new_location = request_path + "/";
         throw HttpExceptionRedirect(HttpStatusCode::MovedPermanently, new_location);
     }
 
     // index defined and exists -> use it
-    if (!index.empty()) { // index defined
+    if (!index.empty())
+    { // index defined
         std::string index_path = full_path + index;
-        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE) { 
+        if (ConfigFile::getTypePath(index_path) == F_REGULAR_FILE)
+        {
             full_path = index_path;
             logDebug("🍍 Directory index found: %s", index_path.c_str());
             return;
         }
     }
     // no index defined or not found
-    if (autoindex) {
+    if (autoindex)
+    {
         // autoindex ON
         logDebug("🍍 Autoindex enabled for directory %s", full_path.c_str());
         request.setAutoindex(true);
     }
-    else {
+    else
+    {
         // No hay index y autoindex está deshabilitado → 404
         throw HttpException(HttpStatusCode::NotFound);
     }
-    
 }
 
-void ServerManager::_apply_redirection(const Location *loc) {
-    if (loc && !loc->getReturn().empty()) {
+void ServerManager::_apply_redirection(const Location *loc)
+{
+    if (loc && !loc->getReturn().empty())
+    {
         std::string new_location = loc->getReturn();
         throw HttpExceptionRedirect(HttpStatusCode::MovedPermanently, new_location);
     }
@@ -532,7 +612,7 @@ void ServerManager::_apply_redirection(const Location *loc) {
         return 302 http://example.com/other_new;
     }
 
-    --> o sea, con codigo de redireccion 
+    --> o sea, con codigo de redireccion
     ademas!! acepta return en server block y nosotros no.
     */
 }
@@ -541,9 +621,11 @@ void ServerManager::_apply_redirection(const Location *loc) {
  * Resolve the request path based on server configuration.
  * index, root, alias, return, etc.
  */
-void ServerManager::resolve_path(Request &request, int client_socket) {
+void ServerManager::resolve_path(Request &request, int client_socket)
+{
     int server_fd = _get_client_server_fd(client_socket);
-    if (server_fd == -1) {
+    if (server_fd == -1)
+    {
         logError("resolve_path: client_socket %d not found in _client_server_map!", client_socket);
         throw HttpException(HttpStatusCode::InternalServerError);
     }
@@ -551,14 +633,14 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     ServerUnit &server = _servers_map[server_fd];
     std::string path = request.getPath();
     path = path_normalization(clean_path(path));
-    
+
     // server block config
     std::string root = server.getRoot();
     std::string index = server.getIndex();
     bool autoindex = server.getAutoindex();
     bool used_alias = false;
     std::string full_path;
-    
+
     // 1. search best location and apply
     const Location *loc = _find_best_location(path, server.getLocations());
     _apply_redirection(loc);
@@ -572,34 +654,40 @@ void ServerManager::resolve_path(Request &request, int client_socket) {
     _handle_directory_case(full_path, path, index, autoindex, request);
 
     // checking the file existence is done by the methods resolver.
-    
+
     // finally, set the resolved path
     request.setPath(full_path);
 }
 
-std::string ServerManager::prepare_response(int client_socket, const std::string &request_str) {
+std::string ServerManager::prepare_response(int client_socket, const std::string &request_str)
+{
     std::string response_str;
 
-    try {
+    try
+    {
         logDebug("\n----------\n⛺️Parsing request:\n%s", request_str.c_str());
         Request request(request_str);
-        if (request.getRet() != 200) 
+        if (request.getRet() != 200)
             throw HttpException(request.getRet());
-        logDebug("🍅 Request parsed. Query: [%s:%s]",request.getMethod().c_str(),request.getPath().c_str());
+        logDebug("🍅 Request parsed. Query: [%s:%s]", request.getMethod().c_str(), request.getPath().c_str());
         resolve_path(request, client_socket);
         logDebug("🍅 preparing response. client socket: %i. Query: %s %s",
-            client_socket, request.getMethod().c_str(), request.getPath().c_str());
+                 client_socket, request.getMethod().c_str(), request.getPath().c_str());
         HttpResponse response(&request);
         response_str = response.getResponse();
         logInfo("response_str ok");
-    } catch (const HttpExceptionRedirect &e) {
+    }
+    catch (const HttpExceptionRedirect &e)
+    {
         int code = e.getStatusCode();
         std::string location = e.getLocation();
         logInfo("🍊 Acción: Redirigir con código %d a %s", code, location.c_str());
         HttpResponse response(code, location);
         response_str = response.getResponse();
         logInfo("response_str redirect ok");
-    } catch (const HttpExceptionNotAllowed &e) {
+    }
+    catch (const HttpExceptionNotAllowed &e)
+    {
         int code = e.getStatusCode();
         std::string methods = e.getAllowedMethods();
         logInfo("🍊 Acción: Método no permitido. Allowed: %s", methods.c_str());
@@ -610,14 +698,17 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
         logDebug("response:\n%s\n-----", response_str.c_str());
         // encapsulate drain-and-adjust logic in helper
         _try_drain_and_adjust_response(client_socket, response_str);
-    } catch (const HttpException &e) {
+    }
+    catch (const HttpException &e)
+    {
         int code = e.getStatusCode();
         logError("HTTP Exception caught: %s, code %d", e.what(), code);
         response_str = prepare_error_response(client_socket, code);
         logInfo("response_str error ok");
         logDebug("response:\n%s\n-----", response_str.c_str());
-
-    } catch (const std::exception &e) {
+    }
+    catch (const std::exception &e)
+    {
         logError("Exception: %s", e.what());
         response_str = prepare_error_response(client_socket, HttpStatusCode::InternalServerError);
         logInfo("response_str error ok");
@@ -626,12 +717,14 @@ std::string ServerManager::prepare_response(int client_socket, const std::string
     return response_str;
 }
 
-std::string ServerManager::prepare_error_response(int client_socket, int code) {
+std::string ServerManager::prepare_error_response(int client_socket, int code)
+{
     logInfo("Prep error: client socket %i. error %d", client_socket, code);
     std::string response_str;
     // first: try error page in config
     int server_fd = _get_client_server_fd(client_socket);
-    if (server_fd == -1) {
+    if (server_fd == -1)
+    {
         // no deberia pasar
         logError("prep error: client_socket %d not found in _client_server_map!", client_socket);
         HttpResponse response(HttpStatusCode::InternalServerError);
@@ -639,7 +732,8 @@ std::string ServerManager::prepare_error_response(int client_socket, int code) {
     }
     ServerUnit &server = _servers_map[server_fd];
     std::string err_page_path = server.getPathErrorPage(code);
-    if (!err_page_path.empty()) {
+    if (!err_page_path.empty())
+    {
         logInfo("🍊 Acción: Mostrar página de error %d desde %s", code, err_page_path.c_str());
         HttpResponse response(code, WWW_ROOT + err_page_path);
         response_str = response.getResponse();
@@ -648,45 +742,52 @@ std::string ServerManager::prepare_error_response(int client_socket, int code) {
     logDebug("prep error: error page for code %d not found in server config", code);
     // if not found, treat web server error
     std::string message = statusCodeString(code);
-    switch (code) {
-        case HttpStatusCode::NotFound:
-        case HttpStatusCode::Forbidden:
-        case HttpStatusCode::MethodNotAllowed:
-            {
-                // show error page
-                logError("🍊 Acción: Mostrar página de error %d.", code);
-                HttpResponse response(code);
-                response_str = response.getResponse();
-            }
-            break;
-        case HttpStatusCode::InternalServerError:
-            logError("Error. %s. Acción: Revisar los registros del servidor.", message.c_str());
-            {
-                HttpResponse response(code);
-                response_str = response.getResponse();
-            }
-            break;
-        case HttpStatusCode::BadRequest:
-            response_str =
-                    "HTTP/1.1 400 Bad Request\r\n"
-                    "Content-Type: text/html\r\n"
-                    "Connection: close\r\n\r\n"
-                    "<h1>400 Bad Request</h1>";
-            break;
-        default:
-            {
-                logError("Error no gestionado: %s. hacer algo!.", message.c_str());
-                // show error page
-                logError("🍊 Acción: Mostrar página de error %d.", code);
-                HttpResponse response(code);
-                response_str = response.getResponse();
-            }
-            break;
+    switch (code)
+    {
+    case HttpStatusCode::NotFound:
+    case HttpStatusCode::Forbidden:
+    case HttpStatusCode::MethodNotAllowed:
+    {
+        // show error page
+        logError("🍊 Acción: Mostrar página de error %d.", code);
+        HttpResponse response(code);
+        response_str = response.getResponse();
+    }
+    break;
+    case HttpStatusCode::InternalServerError:
+        logError("Error. %s. Acción: Revisar los registros del servidor.", message.c_str());
+        {
+            HttpResponse response(code);
+            response_str = response.getResponse();
+        }
+        break;
+    case HttpStatusCode::BadRequest:
+    {
+        std::string body = "<h1>400 Bad Request</h1>";
+        response_str =
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: " +
+            to_string(body.length()) + "\r\n"
+                                       "Connection: close\r\n\r\n" +
+            body;
+    }
+    break;
+    default:
+    {
+        logError("Error no gestionado: %s. hacer algo!.", message.c_str());
+        // show error page
+        logError("🍊 Acción: Mostrar página de error %d.", code);
+        HttpResponse response(code);
+        response_str = response.getResponse();
+    }
+    break;
     }
     return response_str;
 }
 
-void ServerManager::_cleanup_client(int client_sock) {
+void ServerManager::_cleanup_client(int client_sock)
+{
     FD_CLR(client_sock, &_read_fds);
     FD_CLR(client_sock, &_write_fds);
     close(client_sock);
@@ -697,7 +798,8 @@ void ServerManager::_cleanup_client(int client_sock) {
     logInfo("🐟 Client socket %d cleaned up", client_sock);
 }
 
-void ServerManager::_handle_signal(int signal) {
-	(void)signal;
+void ServerManager::_handle_signal(int signal)
+{
+    (void)signal;
     ServerManager::_running = false;
 }

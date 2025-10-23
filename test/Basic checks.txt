@@ -1,0 +1,110 @@
+
+# ========================================
+# PREPARACIÓN
+# ========================================
+
+# 1. Compilar el servidor
+make
+
+# 2. Iniciar el servidor en segundo plano
+./webserv config/default.config
+
+# 3. Verificar que el servidor está corriendo
+ps aux | grep "[w]ebserv"
+
+# ========================================
+# TEST 1: GET REQUEST CON CURL
+# ========================================
+
+# GET en la raíz
+curl -i http://127.0.0.1:8001/
+
+# GET de página específica
+curl -i http://127.0.0.1:8001/about.html
+
+
+# ========================================
+# TEST 2: POST REQUEST
+# ========================================
+
+# Crear archivo de prueba para subir
+echo "Este es un archivo de prueba para webserv - $(date)" > /tmp/test_upload.txt
+
+# POST con archivo a /upload (GUARDA en www/file/)
+curl -i -X POST -F "file=@/tmp/test_upload.txt" http://127.0.0.1:8001/upload
+
+
+# ========================================
+# TEST 3: DELETE REQUEST
+# ========================================
+
+# DELETE con query parameter
+curl -i -X DELETE "http://127.0.0.1:8001/delete/test_upload.txt?img=test_upload.txt"
+
+
+# ========================================
+# TEST 4: UNKNOWN REQUEST METHOD
+# ========================================
+
+# Probar método UNKNOWN
+curl -i -X UNKNOWN http://127.0.0.1:8001/
+
+
+# ========================================
+# TEST 5: METHOD NOT ALLOWED (405)
+# ========================================
+
+# GET en ruta que solo permite POST
+curl -i http://127.0.0.1:8001/upload/
+
+# POST en ruta que solo permite GET
+curl -i -X POST http://127.0.0.1:8001/
+
+# DELETE en ruta que solo permite GET
+curl -i -X DELETE http://127.0.0.1:8001/
+
+
+# ========================================
+# TEST 6: UPLOAD Y RECUPERACIÓN DE ARCHIVO
+# ========================================
+
+# Crear archivo de prueba
+echo "Contenido del archivo de prueba - WebServ Test $(date +%s)" > /tmp/upload_test.txt
+
+# Subir archivo
+curl -i -X POST -F "file=@/tmp/upload_test.txt" http://127.0.0.1:8001/upload
+
+# Verificar que el archivo se subió
+ls -lh ./www/file/
+
+# Crear archivo manualmente para simular upload (si CGI no funciona)
+echo "Este archivo fue subido correctamente al servidor WebServ - $(date)" > ./www/file/uploaded_file.txt
+
+# Recuperar el archivo con GET
+curl -i http://127.0.0.1:8001/file/upload_test.txt
+
+# Descargar el archivo
+curl -o ./downloaded_file.txt http://127.0.0.1:8001/file/upload_test.txt
+
+# Comparar archivos original y descargado
+diff ./www/file/upload_test.txt ./downloaded_file.txt
+
+
+# ========================================
+# TEST 7: DIFERENTES STATUS CODES
+# ========================================
+
+# 200 OK
+curl -i http://127.0.0.1:8001/index.html
+
+# 404 Not Found
+curl -i http://127.0.0.1:8001/noexiste.html
+
+# 405 Method Not Allowed
+curl -i -X POST http://127.0.0.1:8001/
+
+# 400 Bad Request
+curl -i -X BADMETHOD http://127.0.0.1:8001/
+
+# 501 Not Implemented
+curl -i -X PUT http://127.0.0.1:8001/put_test/test.txt

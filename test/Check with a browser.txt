@@ -1,0 +1,63 @@
+
+# ========================================
+# PREPARACIÓN
+# ========================================
+
+# 1. Compilar el servidor
+make
+
+# 2. Iniciar el servidor en segundo plano
+./webserv config/default.config
+
+# 3. Verificar que el servidor está corriendo
+ps aux | grep "[w]ebserv"
+
+# 4. Abrir herramientas de desarrollo del navegador
+Ir a la pestaña Network (Red)
+
+# ========================================
+# TEST 1: SITIO WEB ESTÁTICO COMPLETO
+# ========================================
+
+# URL a probar en el navegador:
+http://127.0.0.1:8001/
+
+# ========================================
+# TEST 2: NAVEGACIÓN A OTRAS PÁGINAS
+# ========================================
+
+# URLs a probar en el navegador:
+http://127.0.0.1:8001/about.html
+http://127.0.0.1:8001/contact.html
+
+# ========================================
+# TEST 3: URL INCORRECTA (404 NOT FOUND)
+# ========================================
+
+# URLs a probar en el navegador:
+http://127.0.0.1:8001/fake.html
+
+
+# ========================================
+# TEST 4: LISTADO DE DIRECTORIO
+# ========================================
+
+# URL a probar en el navegador:
+http://127.0.0.1:8002/webdev/imgs/
+
+
+# ========================================
+# TEST 5: REDIRECCIÓN (RETURN)
+# ========================================
+
+# URL a probar en el navegador:
+http://127.0.0.1:8002/the-b2b-imgs
+
+
+# ========================================
+# TEST 8: RECURSOS ESTÁTICOS (CSS, JS, IMÁGENES)
+# ========================================
+
+# URLs a probar en el navegador:
+http://127.0.0.1:8001/css/bootstrap.min.css
+
