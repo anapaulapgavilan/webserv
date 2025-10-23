@@ -277,22 +277,18 @@ bool ServerManager::parse_headers(int client_sock, ClientRequest &cr) {
 
 void ServerManager::_handle_read(int client_sock) {
     char buffer[BUFFER_SIZE];
-    int n;
 
     logInfo("🐟 Client connected on socket %d", client_sock);
     ClientRequest &cr = _read_requests[client_sock];
 
-    // receive client request data
-    while ((n = recv(client_sock, buffer, sizeof(buffer), 0)) > 0) {
+    int n = recv(client_sock, buffer, sizeof(buffer), 0);
+    if (n > 0) {
         cr.append_to_buffer(std::string(buffer, n));
 
-        // Parsear headers una sola vez, cuando estén completos
         if (!cr.headers_parsed) {
             if (!parse_headers(client_sock, cr)) {
-                // Aún no hay headers completos; sigue leyendo
-                continue;
+                return;
             }
-            // Si Content-Length ya excede el límite → 413 inmediato
             if (cr.max_size > 0 && cr.content_length >= 0
                 && (size_t)cr.content_length > cr.max_size) {
                 _write_buffer[client_sock] =
@@ -306,13 +302,12 @@ void ServerManager::_handle_read(int client_sock) {
                 return;
             }
         }
-        // Si ya hay headers, check max body size y completitud
+
         if (cr.headers_parsed) {
             size_t body_bytes = (cr.current_size > cr.body_start)
                                 ? (cr.current_size - cr.body_start)
                                 : 0;
 
-            // check max body size
             if (cr.max_size > 0 && body_bytes > cr.max_size) {
                 logError("Client %d exceeded max body size (body=%zu > %zu). 413.",
                          client_sock, body_bytes, cr.max_size);
@@ -327,17 +322,14 @@ void ServerManager::_handle_read(int client_sock) {
                 return;
             }
 
-            // check request completeness
             bool complete = false;
             if (cr.content_length < 0) {
-                // No hay body esperado → con headers basta
                 complete = true;
             } else {
                 complete = (body_bytes >= (size_t)cr.content_length);
             }
             if (complete) {
                 logInfo("🐠 Request complete from client socket %d", client_sock);
-                // responder sin esperar a que el cliente cierre la conexión.
                 _write_buffer[client_sock] = prepare_response(client_sock, cr.buffer);
                 _bytes_sent[client_sock] = 0;
                 FD_CLR(client_sock, &_read_fds);
@@ -345,8 +337,10 @@ void ServerManager::_handle_read(int client_sock) {
                 return;
             }
         }
+        return;
     }
-    if (n < 0 && errno != EWOULDBLOCK && errno != EAGAIN) {
+
+    if (n < 0) {
         logError("Failed to receive data from client");
         _cleanup_client(client_sock);
         return;
@@ -598,7 +592,6 @@ void ServerManager::_handle_directory_case(
         // No hay index y autoindex está deshabilitado → 404
         throw HttpException(HttpStatusCode::NotFound);
     }
-
 }
 
 void ServerManager::_apply_redirection(const Location *loc) {
