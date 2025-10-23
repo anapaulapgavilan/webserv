@@ -8,6 +8,8 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include <fstream>
+#include <cstdio>
 
 Cgi::Cgi(const std::string& scriptPath) : _scriptPath(scriptPath) {
     if (_scriptPath.empty()) {
@@ -51,30 +53,72 @@ void Cgi::setEnvVariables(const Request& req) {
 std::string Cgi::executeCgi(const Request& req) {
     std::string output;
 
-    int stdin_pipe[2]; // Pipe for stdin
-    int stdout_pipe[2]; // Pipe for stdout
-    if (pipe(stdin_pipe) == -1 || pipe(stdout_pipe) == -1) {
-        throw std::runtime_error("Failed to create pipes");
+    char inputTemplate[] = "/tmp/webserv_cgi_inXXXXXX";
+    char outputTemplate[] = "/tmp/webserv_cgi_outXXXXXX";
+
+    int input_fd = mkstemp(inputTemplate);
+    if (input_fd == -1) {
+        throw std::runtime_error("Failed to create CGI input temp file");
+    }
+
+    int output_fd = mkstemp(outputTemplate);
+    if (output_fd == -1) {
+        close(input_fd);
+        unlink(inputTemplate);
+        throw std::runtime_error("Failed to create CGI output temp file");
+    }
+
+    const std::string &body = req.getBody();
+    size_t total_written = 0;
+    while (total_written < body.size()) {
+        ssize_t written = write(input_fd, body.data() + total_written, body.size() - total_written);
+        if (written < 0) {
+            if (errno == EINTR)
+                continue;
+            close(input_fd);
+            close(output_fd);
+            unlink(inputTemplate);
+            unlink(outputTemplate);
+            throw HttpException(HttpStatusCode::InternalServerError);
+        }
+        if (written == 0) {
+            close(input_fd);
+            close(output_fd);
+            unlink(inputTemplate);
+            unlink(outputTemplate);
+            throw HttpException(HttpStatusCode::InternalServerError);
+        }
+        total_written += static_cast<size_t>(written);
+    }
+    if (lseek(input_fd, 0, SEEK_SET) == -1) {
+        close(input_fd);
+        close(output_fd);
+        unlink(inputTemplate);
+        unlink(outputTemplate);
+        throw HttpException(HttpStatusCode::InternalServerError);
     }
 
     pid_t pid = fork();
     if (pid < 0) {
-        close(stdin_pipe[0]); close(stdin_pipe[1]);
-        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        close(input_fd);
+        close(output_fd);
+        unlink(inputTemplate);
+        unlink(outputTemplate);
         throw std::runtime_error("Fork failed");
     }
 
     if (pid == 0) { // Child process
-        dup2(stdin_pipe[0], STDIN_FILENO);
-        dup2(stdout_pipe[1], STDOUT_FILENO);
+        if (dup2(input_fd, STDIN_FILENO) == -1 || dup2(output_fd, STDOUT_FILENO) == -1) {
+            logError("CGI dup2 failed: %s", strerror(errno));
+            _exit(EXIT_FAILURE);
+        }
 
-        close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
+        close(input_fd);
+        close(output_fd);
 
-        // Setea variables de entorno
         setEnvVariables(req);
         char* const args[] = {const_cast<char*>(_scriptPath.c_str()), NULL};
-        
+
         std::vector<std::string> env_strings;
         std::vector<char*> envp;
         for (std::map<std::string, std::string>::iterator it = _envVariables.begin(); it != _envVariables.end(); ++it) {
@@ -84,58 +128,42 @@ std::string Cgi::executeCgi(const Request& req) {
             envp.push_back(const_cast<char*>(env_strings[i].c_str()));
         }
 
-        // Prepare envp as array of char* terminated by NULL
         envp.push_back(NULL);
         execve(_scriptPath.c_str(), args, &envp[0]);
         logError("CGI execve failed: %s", strerror(errno));
         _exit(EXIT_FAILURE);
-    } else {
-        close(stdin_pipe[0]);
-        close(stdout_pipe[1]);
-
-        const std::string &body = req.getBody();
-        size_t total_written = 0;
-        while (total_written < body.size()) {
-            ssize_t written = write(stdin_pipe[1], body.data() + total_written,
-                                    body.size() - total_written);
-            if (written < 0) {
-                if (errno == EINTR)
-                    continue;
-                close(stdin_pipe[1]);
-                close(stdout_pipe[0]);
-                waitpid(pid, NULL, 0);
-                throw HttpException(HttpStatusCode::InternalServerError);
-            }
-            if (written == 0) {
-                close(stdin_pipe[1]);
-                close(stdout_pipe[0]);
-                waitpid(pid, NULL, 0);
-                throw HttpException(HttpStatusCode::InternalServerError);
-            }
-            total_written += static_cast<size_t>(written);
-        }
-        close(stdin_pipe[1]);
-
-        char buffer[4096];
-        ssize_t bytesRead;
-        while (true) {
-            bytesRead = read(stdout_pipe[0], buffer, sizeof(buffer));
-            if (bytesRead > 0) {
-                output.append(buffer, bytesRead);
-            } else if (bytesRead == 0) {
-                break;
-            } else {
-                if (errno == EINTR)
-                    continue;
-                close(stdout_pipe[0]);
-                waitpid(pid, NULL, 0);
-                throw HttpException(HttpStatusCode::InternalServerError);
-            }
-        }
-
-        close(stdout_pipe[0]);
-        waitpid(pid, NULL, 0);
     }
+
+    close(input_fd);
+    close(output_fd);
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) == -1) {
+        unlink(inputTemplate);
+        unlink(outputTemplate);
+        throw HttpException(HttpStatusCode::InternalServerError);
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        unlink(inputTemplate);
+        unlink(outputTemplate);
+        throw HttpException(HttpStatusCode::InternalServerError);
+    }
+
+    std::ifstream outputFile(outputTemplate, std::ios::in | std::ios::binary);
+    if (!outputFile) {
+        unlink(inputTemplate);
+        unlink(outputTemplate);
+        throw HttpException(HttpStatusCode::InternalServerError);
+    }
+
+    std::ostringstream oss;
+    oss << outputFile.rdbuf();
+    output = oss.str();
+
+    outputFile.close();
+    unlink(inputTemplate);
+    unlink(outputTemplate);
     return output;
 }
 
