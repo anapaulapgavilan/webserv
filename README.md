@@ -1,4 +1,4 @@
-# webserv`webserv` 
+# webserv
 
 Es un servidor HTTP en C++. Carga un archivo de configuración inspirado en la sintaxis de Nginx (ver [`config/default.config`](config/default.config)) para crear múltiples hosts virtuales, servir recursos estáticos desde `www/`, y delegar ciertas extensiones de archivos a manejadores CGI como [`./cgi_tester`](cgi_tester).
 
