@@ -1,5 +1,6 @@
 #include "../include/WebServ.hpp"
 #include <stdexcept>
+#include <cerrno>
 
 bool ServerManager::_running = true; // Initialize the static running variable
 
@@ -103,11 +104,16 @@ void ServerManager::init()
 
         int activity = select(_max_fd + 1, &temp_read_fds, &temp_write_fds, NULL, NULL);
         if (activity < 0) {
-            if (errno == EINTR) continue; // Interrupted by signal
+            if (errno == EINTR)
+                continue; // Interrupted by signal, restart the loop without touching descriptors
             logInfo("Failed to select on sockets");
+            continue; // Avoid acting on stale fd_sets when select() fails
         }
+        if (activity == 0)
+            continue; // No descriptors ready; loop back to select()
 
         for (int fd = 0; fd <= _max_fd; ++fd) {
+            bool handled = false;
             if (FD_ISSET(fd, &temp_read_fds)) {
                 if (_servers_map.find(fd) != _servers_map.end()) {
                     // The fd belongs to a server that has a new connection
@@ -116,8 +122,9 @@ void ServerManager::init()
                     // The fd belongs to a client that is sending data
                     _handle_read(fd);
                 }
+                handled = true;
             }
-            if (FD_ISSET(fd, &temp_write_fds)) {
+            if (!handled && FD_ISSET(fd, &temp_write_fds)) {
                 // The fd belongs to a client that is ready to write data
                 _handle_write(fd);
             }
@@ -168,14 +175,20 @@ void ServerManager::_handle_write(int client_sock) {
     std::string remaining_response = _write_buffer[client_sock].substr(offset);
     */
     logInfo("🐠 Sending response to client socket %d", client_sock);
-    size_t n = send(client_sock, remaining_response.c_str(), remaining_response.size(), 0);
+    ssize_t n = send(client_sock, remaining_response.c_str(), remaining_response.size(), 0);
 
-    if (n <= 0) {
+    if (n < 0) {
         _cleanup_client(client_sock);
-        logError("Failed to send data to client socket %d: %s. Connection closed.", client_sock, strerror(errno));
+        logError("Failed to send data to client socket %d. Connection closed.", client_sock);
         return;
     }
-    _bytes_sent[client_sock] += n;
+    if (n == 0)
+    {
+        _cleanup_client(client_sock);
+        logError("Failed to send data to client socket %d: peer closed connection.", client_sock);
+        return;
+    }
+    _bytes_sent[client_sock] += static_cast<size_t>(n);
     if (_bytes_sent[client_sock] == _write_buffer[client_sock].size()) {
        if (_should_close_connection(_read_requests[client_sock].buffer, _write_buffer[client_sock])) {
             _cleanup_client(client_sock);
@@ -281,9 +294,9 @@ void ServerManager::_handle_read(int client_sock) {
     logInfo("🐟 Client connected on socket %d", client_sock);
     ClientRequest &cr = _read_requests[client_sock];
 
-    int n = recv(client_sock, buffer, sizeof(buffer), 0);
+    ssize_t n = recv(client_sock, buffer, sizeof(buffer), 0);
     if (n > 0) {
-        cr.append_to_buffer(std::string(buffer, n));
+        cr.append_to_buffer(std::string(buffer, static_cast<size_t>(n)));
 
         if (!cr.headers_parsed) {
             if (!parse_headers(client_sock, cr)) {
@@ -377,6 +390,11 @@ void ServerManager::_handle_read(int client_sock) {
         _bytes_sent[client_sock] = 0;
         FD_CLR(client_sock, &_read_fds);
         FD_SET(client_sock, &_write_fds);
+        return;
+    }
+    if (n < 0) {
+        logError("Failed to receive data from client socket %d: %s", client_sock, strerror(errno));
+        _cleanup_client(client_sock);
         return;
     }
 }
