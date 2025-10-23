@@ -1,1 +1,1 @@
-cgi_tester text eol=lf
+cgi_tester binary
