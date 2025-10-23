@@ -198,21 +198,3 @@ for (int fd = 0; fd <= _max_fd; ++fd) {
 2. El bucle recorre todos los posibles `fd`. Para cada uno se inicializa `handled` en `false`.
 3. Si el descriptor estaba listo para lectura se atiende primero (`_handle_new_connection` o `_handle_read`), y entonces `handled` pasa a `true`.
 4. La rama de escritura (`_handle_write`) solo se ejecuta cuando el descriptor **no** fue procesado antes en lectura. Así se cumple la restricción de “una sola llamada a `recv()` o `send()` por socket y por despertar de `select`”.
-
-### ¿Cómo funciona `select()` internamente?
-
-Imagina que el sistema operativo lleva una libreta con casillas numeradas, una por cada descriptor de archivo (0 para `stdin`, 1 para `stdout`, etc.). El tipo `fd_set` no es más que un **arreglo de bits** que marca qué casillas nos interesan. Las macros `FD_SET(fd, &read_set)` y `FD_CLR` encienden o apagan esos bits; `FD_ISSET` pregunta si una casilla concreta está activada después de volver de `select`.
-
-Cuando llamamos a `select(nfds, &read_set, &write_set, NULL, timeout)` suceden varias cosas:
-
-1. **Copias de trabajo.** El kernel duplica los conjuntos que le pasamos (por eso en el bucle usamos copias temporales). Las versiones en espacio de usuario quedan intactas hasta que se sustituyen manualmente.
-2. **Bloqueo eficiente.** El hilo queda dormido dentro de la llamada, pero el kernel sigue vigilando todos los descriptores hasta que alguno cambia de estado (listo para leer, escribir o con error). Si especificamos un `timeout`, la llamada termina también al agotarse el tiempo. Aquí usamos `NULL`, así que esperamos indefinidamente.
-3. **Marcas de resultado.** Cuando `select` despierta, sobrescribe los `fd_set` que pasamos con un nuevo patrón de bits: solo permanecen activos los descriptores que están listos. El valor de retorno indica cuántos son.
-4. **Recorrido del usuario.** Ya en nuestro código, iteramos por cada descriptor y consultamos `FD_ISSET` para decidir la acción adecuada (aceptar, leer, escribir). Los descriptores no listos simplemente se omiten en esa vuelta del bucle.
-
-Este mecanismo también explica dos limitaciones clásicas:
-
-- `FD_SETSIZE` (definido normalmente en 1024) fija el máximo de descriptores vigilables en un solo `fd_set`. Si el servidor necesita miles de conexiones, conviene migrar a `poll`, `epoll` o `kqueue`.
-- Al reescribir los conjuntos, es obligatorio **volver a añadir** cualquier descriptor que queramos seguir observando en la siguiente iteración (en `webserv` lo hacemos manteniendo los conjuntos "maestros" `_read_fds` y `_write_fds`).
-
-Entender que `select` opera con máscaras de bits y que el kernel rellena esas máscaras por nosotros ayuda a visualizar por qué se requieren las copias, por qué el bucle revisa todos los ficheros hasta `_max_fd`, y cómo la llamada evita que el servidor malgaste CPU girando activamente sobre cada socket.
