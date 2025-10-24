@@ -129,9 +129,6 @@ std::string HttpResponse::toString() const {
        getBody();
 }
 
-/**
- * checks if the file exists, otherwise throw 404
- */
 std::string validate_path(const std::string &path) {
   std::ifstream file(path.c_str());
   if (!file.is_open()) {

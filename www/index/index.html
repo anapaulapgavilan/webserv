@@ -1,19 +1,153 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Index</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; color: #333; background-color: #f8f8f8; }
-        .error { font-size: 48px; font-weight: bold; color: #3c59e7; }
-        .message { font-size: 24px; color: #555; }
-    </style>
+<style>
+    body { font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 0; background: #0f172a; color: #e2e8f0; }
+    header { background: linear-gradient(120deg, #1d4ed8 0%, #9333ea 100%); padding: 2.5rem 1.5rem; text-align: center; }
+    header h1 { margin: 0; font-size: 2.5rem; }
+    main { padding: 2rem 1.5rem 4rem; max-width: 1100px; margin: 0 auto; }
+    section { margin-bottom: 3rem; }
+    h2 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 1rem; }
+    p { max-width: 70ch; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; background: rgba(15, 23, 42, 0.6); box-shadow: 0 10px 25px rgba(15, 23, 42, 0.45); border-radius: 0.75rem; overflow: hidden; }
+    thead { background: rgba(30, 41, 59, 0.9); }
+    th, td { padding: 0.85rem 1rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.18); }
+    tr:nth-child(even) { background: rgba(30, 41, 59, 0.35); }
+    code { background: rgba(148, 163, 184, 0.12); padding: 0.1rem 0.35rem; border-radius: 0.35rem; }
+    footer { text-align: center; padding: 1.5rem; color: #94a3b8; font-size: 0.9rem; }
+    .category { font-weight: 600; color: #facc15; }
+  </style>
 </head>
 <body>
-    <h1>Index</h1>
-    <div class="message">
-        Hi there! Welcome to the index page.
-    </div>
+  <header>
+    <h1>HTTP Response Status Codes</h1>
+    <p>Reference sheet for the most common status codes defined by the HTTP/1.1 and HTTP/2 specifications.</p>
+  </header>
+  <main>
+    <section>
+      <h2>How to read status codes</h2>
+      <p>
+        Each response begins with a three digit status code. The first digit identifies the class of response (informational, success, redirection, client error, or server error). The final two digits provide the specific semantics defined by the HTTP specifications or related extensions.
+      </p>
+    </section>
+
+    <section>
+      <h2>Informational (1xx)</h2>
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Reason Phrase</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>100</td><td>Continue</td><td>Indicates that the initial part of the request has been received and the client should continue.</td></tr>
+          <tr><td>101</td><td>Switching Protocols</td><td>Server agrees to switch protocols as requested by the client&apos;s <code>Upgrade</code> header.</td></tr>
+          <tr><td>102</td><td>Processing</td><td>WebDAV interim response indicating the server accepted the request but has not yet completed it.</td></tr>
+          <tr><td>103</td><td>Early Hints</td><td>Provides hints to preload resources while the server prepares a final response.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Successful (2xx)</h2>
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Reason Phrase</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>200</td><td>OK</td><td>Standard response for successful HTTP requests.</td></tr>
+          <tr><td>201</td><td>Created</td><td>The request succeeded and led to the creation of a resource.</td></tr>
+          <tr><td>202</td><td>Accepted</td><td>Request accepted for processing, but not completed yet.</td></tr>
+          <tr><td>203</td><td>Non-Authoritative Information</td><td>Returned metadata is not exactly the same as available from the origin server.</td></tr>
+          <tr><td>204</td><td>No Content</td><td>Request succeeded but the response intentionally contains no content.</td></tr>
+          <tr><td>205</td><td>Reset Content</td><td>Signals that the client should reset the document view.</td></tr>
+          <tr><td>206</td><td>Partial Content</td><td>Server is delivering only part of the resource due to a range header.</td></tr>
+          <tr><td>207</td><td>Multi-Status</td><td>WebDAV response providing status for multiple independent operations.</td></tr>
+          <tr><td>208</td><td>Already Reported</td><td>WebDAV response used inside a DAV binding to avoid repeated enumeration.</td></tr>
+          <tr><td>226</td><td>IM Used</td><td>Response indicates that the server fulfilled a request for the resource using instance manipulations.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Redirection (3xx)</h2>
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Reason Phrase</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>300</td><td>Multiple Choices</td><td>Indicates several possible responses the client can choose from.</td></tr>
+          <tr><td>301</td><td>Moved Permanently</td><td>The resource has been assigned a new permanent URI.</td></tr>
+          <tr><td>302</td><td>Found</td><td>Temporary redirect indicating the resource resides under a different URI.</td></tr>
+          <tr><td>303</td><td>See Other</td><td>Directs the client to retrieve the resource with a GET at another URI.</td></tr>
+          <tr><td>304</td><td>Not Modified</td><td>Indicates that the cached version is still valid and the body is not resent.</td></tr>
+          <tr><td>305</td><td>Use Proxy</td><td>Deprecated; indicates the resource is available only through a proxy.</td></tr>
+          <tr><td>306</td><td>(Unused)</td><td>Reserved status code that is no longer used.</td></tr>
+          <tr><td>307</td><td>Temporary Redirect</td><td>Requests future requests to be repeated with another URI using the same method.</td></tr>
+          <tr><td>308</td><td>Permanent Redirect</td><td>The resource is now permanently located at a new URI, and future requests should use the same method.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Client Errors (4xx)</h2>
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Reason Phrase</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>400</td><td>Bad Request</td><td>The server cannot or will not process the request due to client error.</td></tr>
+          <tr><td>401</td><td>Unauthorized</td><td>Authentication is required and has either failed or not been provided.</td></tr>
+          <tr><td>402</td><td>Payment Required</td><td>Reserved for future use, originally intended for digital payment systems.</td></tr>
+          <tr><td>403</td><td>Forbidden</td><td>The request was valid, but the server is refusing action.</td></tr>
+          <tr><td>404</td><td>Not Found</td><td>The requested resource could not be found.</td></tr>
+          <tr><td>405</td><td>Method Not Allowed</td><td>The request method is known by the server but not supported for the resource.</td></tr>
+          <tr><td>406</td><td>Not Acceptable</td><td>The server cannot produce a response matching the list of acceptable values defined in the request&apos;s proactive content negotiation headers.</td></tr>
+          <tr><td>407</td><td>Proxy Authentication Required</td><td>Requires client authentication with a proxy.</td></tr>
+          <tr><td>408</td><td>Request Timeout</td><td>The server timed out waiting for the request.</td></tr>
+          <tr><td>409</td><td>Conflict</td><td>The request could not be completed due to a conflict with the current state of the resource.</td></tr>
+          <tr><td>410</td><td>Gone</td><td>The resource is no longer available and will not be available again.</td></tr>
+          <tr><td>411</td><td>Length Required</td><td>The request did not specify the length of its content, which is required.</td></tr>
+          <tr><td>412</td><td>Precondition Failed</td><td>Preconditions given in the request header fields were not met.</td></tr>
+          <tr><td>413</td><td>Payload Too Large</td><td>The request entity is larger than limits defined by the server.</td></tr>
+          <tr><td>414</td><td>URI Too Long</td><td>The URI provided was too long for the server to process.</td></tr>
+          <tr><td>415</td><td>Unsupported Media Type</td><td>The media format of the requested data is not supported by the server.</td></tr>
+          <tr><td>416</td><td>Range Not Satisfiable</td><td>The range specified by the <code>Range</code> header field in the request can&apos;t be fulfilled.</td></tr>
+          <tr><td>417</td><td>Expectation Failed</td><td>The expectation given in the request&apos;s <code>Expect</code> header could not be met.</td></tr>
+          <tr><td>418</td><td>I&apos;m a teapot</td><td>An April Fools&apos; joke from RFC 2324, returned by teapot-aware applications.</td></tr>
+          <tr><td>421</td><td>Misdirected Request</td><td>The request was directed at a server that is not able to produce a response.</td></tr>
+          <tr><td>422</td><td>Unprocessable Content</td><td>The server understands the content type but was unable to process the contained instructions.</td></tr>
+          <tr><td>423</td><td>Locked</td><td>The resource that is being accessed is locked.</td></tr>
+          <tr><td>424</td><td>Failed Dependency</td><td>The request failed due to a failure of a previous request.</td></tr>
+          <tr><td>425</td><td>Too Early</td><td>Indicates that the server is unwilling to risk processing a request that might be replayed.</td></tr>
+          <tr><td>426</td><td>Upgrade Required</td><td>The client should switch to a different protocol such as TLS/1.3.</td></tr>
+          <tr><td>428</td><td>Precondition Required</td><td>The origin server requires the request to be conditional.</td></tr>
+          <tr><td>429</td><td>Too Many Requests</td><td>The user has sent too many requests in a given amount of time.</td></tr>
+          <tr><td>431</td><td>Request Header Fields Too Large</td><td>The server is unwilling to process the request because its header fields are too large.</td></tr>
+          <tr><td>451</td><td>Unavailable For Legal Reasons</td><td>The user requested a resource that is not available due to legal reasons.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Server Errors (5xx)</h2>
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Reason Phrase</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>500</td><td>Internal Server Error</td><td>Generic error message when the server encounters an unexpected condition.</td></tr>
+          <tr><td>501</td><td>Not Implemented</td><td>The server does not support the functionality required to fulfill the request.</td></tr>
+          <tr><td>502</td><td>Bad Gateway</td><td>The server received an invalid response from an inbound server it accessed while attempting to fulfill the request.</td></tr>
+          <tr><td>503</td><td>Service Unavailable</td><td>The server is not ready to handle the request, often due to maintenance or overload.</td></tr>
+          <tr><td>504</td><td>Gateway Timeout</td><td>The server was acting as a gateway and did not receive a timely response.</td></tr>
+          <tr><td>505</td><td>HTTP Version Not Supported</td><td>The server does not support the HTTP protocol version used in the request.</td></tr>
+          <tr><td>506</td><td>Variant Also Negotiates</td><td>Transparent content negotiation configuration results in a circular reference.</td></tr>
+          <tr><td>507</td><td>Insufficient Storage</td><td>The method could not be performed because the server is unable to store the representation needed to complete the request.</td></tr>
+          <tr><td>508</td><td>Loop Detected</td><td>The server detected an infinite loop while processing a request with &quot;Depth: infinity&quot;.</td></tr>
+          <tr><td>510</td><td>Not Extended</td><td>Further extensions to the request are required for the server to fulfill it.</td></tr>
+          <tr><td>511</td><td>Network Authentication Required</td><td>The client needs to authenticate to gain network access.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <footer>
+    <p>This quick reference is based on the IETF HTTP specifications (RFC 9110, RFC 9111, RFC 9112) and related extension RFCs.</p>
+  </footer>
 </body>
 </html>

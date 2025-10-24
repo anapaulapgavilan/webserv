@@ -198,3 +198,44 @@ for (int fd = 0; fd <= _max_fd; ++fd) {
 2. El bucle recorre todos los posibles `fd`. Para cada uno se inicializa `handled` en `false`.
 3. Si el descriptor estaba listo para lectura se atiende primero (`_handle_new_connection` o `_handle_read`), y entonces `handled` pasa a `true`.
 4. La rama de escritura (`_handle_write`) solo se ejecuta cuando el descriptor **no** fue procesado antes en lectura. Así se cumple la restricción de “una sola llamada a `recv()` o `send()` por socket y por despertar de `select`”.
+
+# Configuration
+
+## In the configuration file, check whether you can do the following and test the result:
+
+## 1. Search for the HTTP response status codes list on the internet. During this evaluation, if any status codes is wrong, don't give any related points.
+
+## Referencia de códigos de estado HTTP
+
+El bloque `server` principal ahora expone la ruta `/status-codes.html`, que sirve una página de referencia con los códigos de respuesta HTTP más comunes. Puedes utilizarla durante las demostraciones para validar rápidamente que tu implementación respeta los códigos publicados por la IETF.
+
+### Comandos para probar códigos de estado
+
+1. **200 OK** – Recupera la tabla de referencia estática:
+   ```bash
+   curl -i http://127.0.0.1:8001/index.html
+   ```
+2. **404 Not Found** – Solicita un recurso inexistente en el mismo host:
+   ```bash
+   curl -i http://127.0.0.1:8001/no-such-page
+   ```
+3. **405 Method Not Allowed** – Intenta usar un método no permitido en la raíz (el `location /` sólo acepta GET):
+   ```bash
+   curl -i -X POST http://127.0.0.1:8001/
+   ```
+4. **400 Bad Request** – Envía una petición malformada usando `nc` para comprobar la validación del parser HTTP:
+   ```bash
+   printf 'BAD / HTTP/1.1\r\nHost: localhost\r\n\r\n' | nc -N 127.0.0.1 8001
+   ```
+6. **301 Moved Permanently** – Solicita la ruta que redirige a `/webdev` en el servidor del puerto 8002:
+   ```bash
+   curl -i http://127.0.0.1:8002/the-b2b-imgs
+   ```
+7. **500 Internal Server Error** – Lanza un método TRACE no soportado para verificar la página de error genérica del servidor:
+   ```bash
+   curl -i -X TRACE http://127.0.0.1:8001/
+   ```
+
+Cada comando muestra las cabeceras de respuesta y permite comprobar que el código de estado devuelto coincide con el comportamiento esperado.
+
+## 2. 
