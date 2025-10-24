@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Method Guard Demo</title>
+    <link rel="stylesheet" href="../css/bootstrap.min.css">
+    <link rel="stylesheet" href="../css/templatemo-style.css">
+</head>
+<body>
+    <div class="container tm-mt-60">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 col-md-10 col-12">
+                <div class="tm-bg-primary-dark tm-block tm-block-pad tm-text-white">
+                    <h1 class="tm-text-primary mb-4">Method Guard Demo</h1>
+                    <p class="tm-mb-40">
+                        This page lives under <code>/method-guard/</code>. The server only allows <strong>GET</strong> and
+                        <strong>POST</strong> on this location. Any attempt to send a different HTTP method (for example
+                        <code>DELETE</code>) should be rejected with a <code>405 Method Not Allowed</code> status so that
+                        resources cannot be removed accidentally.
+                    </p>
+                    <p class="tm-mb-0">
+                        Use the README commands to try the allowed and forbidden requests and confirm that the
+                        configuration is working as expected.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

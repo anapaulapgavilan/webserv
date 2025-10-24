@@ -238,4 +238,234 @@ El bloque `server` principal ahora expone la ruta `/status-codes.html`, que sirv
 
 Cada comando muestra las cabeceras de respuesta y permite comprobar que el código de estado devuelto coincide con el comportamiento esperado.
 
-## 2. 
+## 2. Setup multiple servers with different ports.
+
+El archivo [`config/default.config`](config/default.config) define **tres** bloques `server` que escuchan en los puertos `8001`, `8002` y `8003`. Todos se levantan al ejecutar `./webserv config/default.config`; para demostrar que están activos simultáneamente puedes lanzar las siguientes peticiones desde otra terminal:
+
+1. **Servidor base (8001)** – Devuelve la página principal servida desde la raíz `www/`:
+   ```bash
+   curl -i http://127.0.0.1:8001/
+   ```
+
+   ```bash
+   curl -sS -D - http://127.0.0.1:8001/ -o /dev/null | head -n 4
+   ```
+
+   Al revisar las cabeceras verás `HTTP/1.1 200 OK` y un `Content-Length` coherente con `www/index.html`, lo que confirma que el primer bloque `server` está atendiendo peticiones.
+
+2. **Servidor con alias (8002)** – Expone `contact.html` a través de la directiva `alias`:
+   ```bash
+   curl -i http://127.0.0.1:8002/contact.html
+   ```
+
+   ```bash
+   curl -sS -D - http://127.0.0.1:8002/contact.html -o /dev/null | head -n 4
+   ```
+
+   Esta respuesta también debería ser `200 OK`, pero su cuerpo proviene de `www/contactalias/contact.html`. El hecho de que llegue a través de un puerto diferente prueba que el segundo bloque `server` y sus `location` personalizados están activos.
+
+3. **Servidor con raíz dedicada (8003)** – Sirve otro árbol de directorios para la misma ruta:
+   ```bash
+   curl -i http://127.0.0.1:8003/contact.html
+   ```
+
+   ```bash
+   curl -sS -D - http://127.0.0.1:8003/contact.html -o /dev/null | head -n 4
+   ```
+
+   En este caso el contenido procede de `www/contactroot/contact.html` gracias a la directiva `root` dentro del tercer bloque. Comparar el `Content-Length` o el HTML recibido con el del punto anterior demuestra que cada servidor usa una configuración distinta aunque la ruta sea la misma.
+
+Si cualquiera de los comandos anterior devuelve un error de conexión (`Connection refused`) significa que el proceso `./webserv` no está en ejecución o que alguno de los puertos está siendo bloqueado en tu máquina. Reinicia el binario y repite la prueba hasta que las tres respuestas sean satisfactorias.
+
+## 3. Setup multiple servers with different hostnames (use something like: curl --resolve example.com:80:127.0.0.1 http://example.com/).
+
+### Hostnames personalizados con `curl --resolve`
+
+Aunque las pruebas anteriores usan direcciones IP directas, cada bloque `server` define un `server_name` distinto (`landing.local`, `contact.local` y `media.local`). Para simular esas resoluciones DNS sin modificar `/etc/hosts`, `curl` ofrece la opción `--resolve`, que inserta una entrada temporal en su resolver interno y, de paso, fuerza que la cabecera `Host` coincida con el nombre configurado. Esto es útil para comprobar que tu implementación selecciona el bloque correcto en función del hostname recibido.
+
+1. **Página principal del hostname `landing.local`** – Espera un `200 OK` con el HTML de `www/index.html`:
+   ```bash
+   curl -i --resolve landing.local:8001:127.0.0.1 \\
+     http://landing.local:8001/
+   ```
+   La opción `--resolve` indica a `curl` que cuando contacte con `landing.local` en el puerto `8001` utilice la IP `127.0.0.1`. La petición llega con `Host: landing.local`, por lo que el servidor elige el primer bloque `server`. Si ves `HTTP/1.1 200 OK` y el contenido de la portada sabrás que la regla ha funcionado.
+
+2. **Hostname `contact.local` expuesto por alias** – Debe redirigirte internamente al archivo de `www/contactalias/`:
+   ```bash
+   curl -i --resolve contact.local:8002:127.0.0.1 \\
+     http://contact.local:8002/contact.html
+   ```
+   Aquí esperamos un `200 OK` cuyo cuerpo coincide con el archivo servido mediante la directiva `alias`. Además, puedes observar en la salida que el encabezado `Host` respeta `contact.local`, confirmando que el bloque del puerto 8002 maneja correctamente la solicitud cuando se le presenta el hostname configurado.
+
+3. **Hostname `media.local` con raíz dedicada** – Devuelve la versión alternativa del formulario de contacto:
+   ```bash
+   curl -i --resolve media.local:8003:127.0.0.1 \\
+     http://media.local:8003/contact.html
+   ```
+   El resultado esperado es otro `200 OK`, pero con un `Content-Length` y un HTML diferentes a los del punto anterior, ya que esta petición se resuelve contra `www/contactroot/contact.html`. Esta diferencia confirma que la selección por hostname funciona incluso cuando la ruta solicitada es idéntica.
+
+## 4. Setup default error page (try to change the error 404).
+
+La configuración de los tres servidores declara `error_page 404 /error_pages/404.html;`, de modo que cualquier recurso inexistente comparte la misma página de error. Tras actualizar `www/error_pages/404.html` ahora mostramos un mensaje con formato uniforme y un botón para regresar a la portada.
+
+1. **Arranca el binario** en una terminal y déjalo a la escucha:
+   ```bash
+   ./webserv config/default.config
+   ```
+   El proceso mantiene los puertos 8001, 8002 y 8003 abiertos sobre `127.0.0.1`, por lo que el resto de comandos asumirán que sigue activo.
+
+2. **Lanza una petición inexistente contra cada hostname** desde otra terminal usando `curl --resolve` para fijar la IP y el encabezado `Host`:
+   ```bash
+   curl -i --resolve landing.local:8001:127.0.0.1 \
+     http://landing.local:8001/does-not-exist
+
+   curl -i --resolve contact.local:8002:127.0.0.1 \
+     http://contact.local:8002/does-not-exist
+
+   curl -i --resolve media.local:8003:127.0.0.1 \
+     http://media.local:8003/does-not-exist
+   ```
+
+## 5. Limit the client body (use: curl -X POST -H "Content-Type: plain/text" --data "BODY IS HERE write something shorter or longer than body limit").
+
+El bloque `location /post_body` del servidor principal ahora fija `client_max_body_size 32;`, lo que significa que cualquier cuerpo de petición que supere 32 bytes recibirá automáticamente un `413 Payload Too Large`. Puedes comprobarlo con `curl` enviando primero un cuerpo corto que cumpla el límite y, después, uno más largo que lo exceda.
+
+1. **Inicia el servidor** (si no lo tienes activo ya) y déjalo escuchando en otra terminal:
+   ```bash
+   ./webserv config/default.config
+   ```
+   Esto levanta los tres hosts virtuales en `127.0.0.1` (puertos `8001`, `8002` y `8003`). El resto de comandos asumen que el proceso sigue ejecutándose.
+
+2. **Envía un cuerpo pequeño (≤ 32 bytes)** a `/post_body` especificando el hostname `landing.local` con `--resolve` y el encabezado `Content-Type: text/plain`:
+   ```bash
+   curl -i --resolve landing.local:8001:127.0.0.1 \
+     -X POST \
+     -H "Content-Type: text/plain" \
+     --data "Short body" \
+     http://landing.local:8001/post_body
+   ```
+   El cuerpo "Short body within limit" ocupa 23 bytes, por lo que la respuesta esperada es `HTTP/1.1 200 OK` y un `Content-Length: 0`, indicando que el servidor aceptó la carga.
+
+3. **Repite la petición con un cuerpo más largo (> 32 bytes)** para forzar el error de límite. Puedes usar la misma estructura de comando sustituyendo el texto por una cadena mayor, por ejemplo:
+   ```bash
+   curl -i --resolve landing.local:8001:127.0.0.1 \
+     -X POST \
+     -H "Content-Type: text/plain" \
+     --data "Body here we write something longer than the body limit" \
+     http://landing.local:8001/post_body
+   ```
+   Esta cadena tiene 55 bytes, así que la respuesta correcta será `HTTP/1.1 413 Payload Too Large` y la conexión se cerrará inmediatamente. Cualquier otro mensaje que supere 32 bytes producirá el mismo resultado.
+
+Si observas los dos códigos (`200` y `413`) tal como se describe, queda demostrado que la directiva `client_max_body_size` está restringiendo correctamente el tamaño del cuerpo que aceptamos desde el cliente.
+
+## 6. Setup routes in a server to different directories.
+
+El primer servidor (`landing.local` en el puerto `8001`) ahora publica dos rutas nuevas que demuestran cómo un mismo bloque `server` puede servir contenidos desde directorios totalmente independientes:
+
+```
+    location /routes/landing {
+        methods GET;
+        alias www/routes/landing/index.html;
+    }
+
+    location /routes/event-recap {
+        methods GET;
+        alias www/routes/event-recap/index.html;
+    }
+```
+
+El primer servidor (`landing.local` en el puerto `8001`) ahora publica dos rutas nuevas que demuestran cómo un mismo bloque `server` puede servir contenidos desde directorios totalmente independientes:
+
+- `/routes/landing/` queda enlazado mediante `alias www/routes/landing/;`, por lo que cualquier recurso solicitado bajo esa ruta se resuelve dentro de ese árbol de directorios independiente.
+- `/routes/event-recap/` sigue la misma lógica con `alias www/routes/event-recap/;`, apuntando a un segundo árbol que mantiene su propio `index.html` y los archivos auxiliares que quieras añadir.
+
+Sigue estos pasos para verificar ambos comportamientos:
+
+1. **Arranca el servidor** si aún no lo tienes en ejecución:
+   ```bash
+   ./webserv config/default.config
+   ```
+   Deja el binario corriendo mientras realizas las peticiones en otra terminal.
+
+2. **Solicita la ruta basada en `alias`** apuntando el hostname al puerto `8001`:
+   ```bash
+   curl -i -H "Host: landing.local" \\
+     http://127.0.0.1:8001/routes/landing/
+   ```
+   La respuesta esperada es `HTTP/1.1 200 OK` con un cuerpo HTML cuyo titular principal dice **“Landing Highlights Route”**. Si olvidas la barra final (`/routes/landing`), el servidor responderá con una redirección `301` hacia la versión canónica con barra, dejando claro que se trata de un directorio real.
+
+3. **Comprueba la ruta del segundo directorio** repitiendo la prueba contra la otra localización:
+   ```bash
+   curl -i -H "Host: landing.local" \\
+     http://127.0.0.1:8001/routes/event-recap/
+   ```
+   Aquí también esperamos `HTTP/1.1 200 OK`, pero el cuerpo debe incluir el titular **“Event Recap Route”**. De nuevo, si accedes sin barra final verás la redirección `301` hacia `/routes/event-recap/`, la cual confirma que la ruta está respaldada por un directorio independiente.
+
+Si cada comando devuelve el código de estado y los encabezados descritos, confirmas que es posible exponer directorios totalmente independientes dentro del mismo bloque `server` jugando con `alias` o reutilizando la raíz principal.
+
+## 7. Setup a default file to search for if you ask for a directory.
+
+Enrutado /routes/ a través de una ubicación dedicada para que el servidor sirva automáticamente el archivo de índice del directorio cuando no se proporcione un nombre de recurso.
+
+```
+location /routes/ {
+        methods GET;
+        alias www/routes/;
+        index index.html;
+    }
+```
+
+Se añadió una página de resumen www/routes/index.html que presenta las rutas de aterrizaje y de recapitulación de eventos disponibles para solicitudes de directorio.
+
+Además de las rutas anteriores, el bloque `server` escucha ahora la ruta base `/routes/` y declara un archivo `index.html` propio dentro de `www/routes/`. Esto significa que cuando el cliente pide el directorio sin especificar un nombre de archivo, la configuración busca automáticamente ese índice y lo devuelve como respuesta.
+
+1. **Mantén el servidor en ejecución** tal y como se describe en los pasos anteriores (`./webserv config/default.config`).
+
+2. **Haz una petición directa al directorio** indicando el hostname del primer bloque `server`:
+   ```bash
+   curl -i -H "Host: landing.local" \\
+     http://127.0.0.1:8001/routes/
+   ```
+   La salida correcta es `HTTP/1.1 200 OK` con un cuerpo HTML cuyo titular principal dice **“Routes Directory Default”**. Esto confirma que el servidor encontró automáticamente el archivo predeterminado del directorio (`www/routes/index.html`).
+
+3. **Comprueba la redirección canónica** repitiendo la petición sin la barra final:
+   ```bash
+   curl -i -H "Host: landing.local" \\
+     http://127.0.0.1:8001/routes
+   ```
+   En este caso esperamos `HTTP/1.1 301 Moved Permanently` con un encabezado `Location: /routes/`. La redirección deja claro que la URL sin barra apunta a un directorio real y que el archivo predeterminado se sirve únicamente cuando la ruta termina en `/`.
+
+Si ambas respuestas coinciden con lo descrito, habrás demostrado que la configuración busca automáticamente un archivo por defecto cuando un cliente solicita un directorio.
+
+## 8. Setup a list of methods accepted for a certain route (e.g., try to delete something with and without permission).
+
+Se restringió la nueva ubicación /method-guard/ para aceptar únicamente GET y POST, conectándola al directorio de demostración para que los métodos no autorizados puedan ser rechazados de manera limpia.
+
+```
+location /method-guard/ {
+    methods GET POST;
+    alias www/method-guard/;
+    index index.html;
+}
+```
+
+Se añadió una página HTML dedicada bajo www/method-guard/ que explica el propósito del escenario de prueba del método de protección.
+
+Para impedir acciones no autorizadas puedes limitar qué métodos HTTP acepta cada `location`. La ruta `/method-guard/` del servidor `landing.local` solo admite `GET` y `POST`, por lo que cualquier intento de usar `DELETE` debe rechazarse con `405 Method Not Allowed`.
+
+1. **Mantén el servidor activo** como en los apartados anteriores (`./webserv config/default.config`).
+
+2. **Haz una petición permitida** con `GET` para verificar que la ruta responde correctamente:
+   ```bash
+   curl -i -H "Host: landing.local" \
+     http://127.0.0.1:8001/method-guard/
+   ```
+   El servidor debe contestar con `HTTP/1.1 200 OK` y un cuerpo HTML que muestra el título **“Method Guard Demo”**, confirmando que el método está permitido.
+
+3. **Intenta usar un método prohibido** (por ejemplo `DELETE`) sobre la misma ruta:
+   ```bash
+   curl -i -H "Host: landing.local" \
+     -X DELETE \
+     http://127.0.0.1:8001/method-guard/
+   ```
+   La respuesta esperada es `HTTP/1.1 405 Method Not Allowed` junto con un encabezado `Allow: GET, POST`. Lo importante es que el código `405` demuestre que la directiva `methods` está bloqueando peticiones no autorizadas.
