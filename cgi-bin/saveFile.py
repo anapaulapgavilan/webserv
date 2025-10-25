@@ -3,6 +3,7 @@ import os
 import sys
 from email import policy
 from email.parser import BytesParser
+from datetime import datetime
 from paths import IMG_DIR
 
 
@@ -61,6 +62,7 @@ def parse_multipart_form_data():
 # Parse the form data
 form = parse_multipart_form_data()
 
+# Check if it's a file upload
 if "file" in form and isinstance(form["file"], dict):
     fileitem = form['file']
     filename = fileitem.get('filename')
@@ -83,6 +85,43 @@ if "file" in form and isinstance(form["file"], dict):
         except Exception as e:
             print(f"<p>Error al guardar el archivo: {e}</p>")
     else:
-        print("<p>No se ha enviado ningún archivo2.</p>")
+        print("<p>No se ha enviado ningún archivo.</p>")
+
+# Check if it's a contact form (has name, email, message fields)
+elif "name" in form or "email" in form or "message" in form:
+    # Create a filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"contact_{timestamp}.txt"
+    filepath = os.path.join(IMG_DIR, filename)
+    filepath = os.path.abspath(filepath)
+    
+    try:
+        # Create file content
+        content = "=== FORMULARIO DE CONTACTO ===\n"
+        content += f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        content += "=" * 40 + "\n\n"
+        
+        if "name" in form:
+            content += f"Nombre: {form['name']}\n"
+        if "email" in form:
+            content += f"Email: {form['email']}\n"
+        if "inquiry" in form:
+            content += f"Asunto: {form['inquiry']}\n"
+        if "message" in form:
+            content += f"\nMensaje:\n{form['message']}\n"
+        
+        content += "\n" + "=" * 40 + "\n"
+        
+        # Save to file
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"<p>Formulario de contacto guardado como '{filename}'.</p>")
+        print(f"<p>Datos procesados correctamente.</p>")
+        
+    except Exception as e:
+        print(f"<p>Error al guardar el formulario: {e}</p>")
+        
 else:
-    print("<p>No se ha enviado ningún archivo.</p>")
+    print("<p>No se ha enviado ningún archivo o formulario.</p>")
+
